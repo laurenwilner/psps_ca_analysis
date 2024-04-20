@@ -30,28 +30,11 @@ duration_to_hours <- function(duration_str) {
     })
     return(unlist(durations))
   } else {
-    return(NA) # return NA if no match found
+    return(NA)
   }
 }
 #-------------------------------------------------
-# cleaning
-
-# every row should be a circuit hour. if there is overlap, then just average the two rows. 
-# ask vivian about zeros. 
-# stay in circuit space for as long as possible and then go to zctas at the end. 
-    # to get to zcta space, map circuits to pixels using CA gridded pop data and then map pixels to zctas.
-
-
-# customer hours without power (absolute metric of power loss)
-# customers (denominator): households+businesses at zip level
-# we will use a data driven threshold (25%, 50%, etc.) 
-    # estimate the number of hours in every 24 hour period where {x}% or more of the customers were without power. 
-    # look at the distribution of percents and pick a reasonable cutpoint. 
-    # count up # of hours that have more than that % off
-    # if we want a binary cut for a synthetic control, that can be based on the distribution
-# Questions 
-    # q for bethany: medical_baseline_customers_impacted
-    # q for bethany: if tot customers impacted is 0.. what does that mean? 
+# EDA
 
 psps <- psps_circuit %>% 
     select(c(Sub_Event_ID, Outage_Start, Outage_Full_Restoration, Outage_Duration, Total_Customers_Impacted)) %>% 
@@ -82,6 +65,20 @@ customers_hist_no0 <- ggplot(psps %>% filter(total_customers_impacted > 0), aes(
         y = "Frequency") + 
     theme_bw()
 
-duration_hist
-customers_hist
-customers_hist_no0
+
+#-------------------------------------------------
+# EDA
+
+# every row should be a circuit hour. if there is overlap, then just average the two rows. 
+# stay in circuit space for as long as possible and then go to zctas at the end. 
+    # to get to zcta space, map circuits to pixels using CA gridded pop data and then map pixels to zctas.
+
+
+# customer hours without power (absolute metric of power loss)
+# customers (denominator): households+businesses at zip level
+# we will use a data driven threshold (25%, 50%, etc.) 
+    # estimate the number of hours in every 24 hour period where {x}% or more of the customers were without power. 
+    # look at the distribution of percents and pick a reasonable cutpoint. 
+    # count up # of hours that have more than that % off
+    # if we want a binary cut for a synthetic control, that can be based on the distribution
+
