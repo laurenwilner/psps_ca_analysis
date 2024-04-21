@@ -122,12 +122,11 @@ psps_expanded <- psps_hourly %>%
     )
   }) %>%
   ungroup() %>%
-  mutate(
-    duration = as.numeric(difftime(row_end, row_start, units = "hours")),
-  ) %>% 
   filter(row_start < outage_end) # if outage start is exactly the end of the outage for a given row, get rid of it. 
 
-# step 2: map to zctas
+write.csv(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.csv"))
+
+# step 2: map to zctas: I think i should do this in python
     # a. merge on polyline data
     # b. get from polylines to pixels
     # c. get from pixels to zctas
