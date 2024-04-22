@@ -88,10 +88,11 @@ customers_hist_no0 <- ggplot(psps_temp %>% filter(total_customers_impacted > 0),
     # if there is overlap on times/circuits, average the rows
     # calculate the number of customers impacted in each circuit hour
     # calculate the number of customers hours without power in each sub_event (absolute metric of power loss)
-# 2. map to zctas: 
+# 2. map to zctas (IN PYTHON): 
     # a. map circuits to pixels using CA gridded pop data
     # b. map pixels to zctas
 # 3. merge households and businesses at zcta level (denominator = households+businesses at zcta level)
+    # SKIP THIS SINCE WE ARE USING PIXEL POP?? 
 # 4. estimate the number of hours in every 24 hour period where {x}% or more of the customers were without power.
     # we will use a data driven threshold (25%, 50%, etc.) 
     # look at the distribution of percents and pick a reasonable cutpoint. 
@@ -130,6 +131,8 @@ write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
     # a. merge on polyline data
     # b. get from polylines to pixels
     # c. get from pixels to zctas
+# read in file created in python 
+psps_zcta <- read_parquet(paste0(clean_dir, "us_circuit_psps_by_hr_zcta.parquet"))
 
 # step 3: merge households and businesses at zcta level
 
