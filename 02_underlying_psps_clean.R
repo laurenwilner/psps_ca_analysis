@@ -124,7 +124,7 @@ psps_expanded <- psps_hourly %>%
   ungroup() %>%
   filter(row_start < outage_end) # if outage start is exactly the end of the outage for a given row, get rid of it. 
 
-write.csv(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.csv"))
+write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
 
 # step 2: map to zctas: I think i should do this in python
     # a. merge on polyline data
