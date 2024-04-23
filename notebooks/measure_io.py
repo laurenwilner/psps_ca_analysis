@@ -28,6 +28,18 @@ def create_measure(measure_data: pd.DataFrame | gpd.GeoDataFrame, measure_name: 
     print("Writing data to ", out_path)
     writer(measure_data, out_path)
 
+# def load_measure(measure_name: str) -> pd.DataFrame | gpd.GeoDataFrame:
+#     """Function to load data""" 
+#     shp_in_path = Path(f"{MEASURE_DATA_DIR}/{measure_name}.geojson")
+#     parquet_in_path = Path(f"{MEASURE_DATA_DIR}/{measure_name}.parquet")
+#     if shp_in_path.exists():
+#         data = gpd.read_file(shp_in_path)
+#     elif parquet_in_path.exists(): 
+#         data = pd.read_parquet(parquet_in_path)
+#     else:
+#         raise FileNotFoundError
+#     return data
+    
 def load_measure(measure_name: str) -> pd.DataFrame | gpd.GeoDataFrame:
     """Function to load data""" 
     shp_in_path = Path(f"{MEASURE_DATA_DIR}/{measure_name}.geojson")
@@ -36,25 +48,12 @@ def load_measure(measure_name: str) -> pd.DataFrame | gpd.GeoDataFrame:
         data = gpd.read_file(shp_in_path)
     elif parquet_in_path.exists(): 
         data = pd.read_parquet(parquet_in_path)
+        if 'geometry' in data.columns: 
+            data['geometry'] = data['geometry'].apply(shapely.wkb.loads)
+            data = gpd.GeoDataFrame(data, geometry='geometry')
     else:
         raise FileNotFoundError
     return data
-    
-# def load_measure(measure_name: str) -> pd.DataFrame | gpd.GeoDataFrame:
-#     """Function to load data""" 
-#     shp_in_path = Path(f"{MEASURE_DATA_DIR}/{measure_name}.geojson")
-#     parquet_in_path = Path(f"{MEASURE_DATA_DIR}/{measure_name}.parquet")
-#     if shp_in_path.exists():
-#         data = gpd.read_file(str(shp_in_path))
-#     elif parquet_in_path.exists(): 
-#         data = pd.read_parquet(parquet_in_path)
-#         if 'geometry' in data.columns: 
-#             data['geometry'] = data['geometry'].apply(shapely.wkb.loads)
-#             data = gpd.GeoDataFrame(data, geometry='geometry')
-#     else:
-#         raise FileNotFoundError
-
-#     return data
     
 # Helper functions to write out particular data formats.
 
