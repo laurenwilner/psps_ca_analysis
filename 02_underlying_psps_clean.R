@@ -117,7 +117,7 @@ psps_hourly <- psps_temp %>%
 psps_expanded <- psps_hourly %>%
   rowwise() %>%
   do({
-    hourly_seq <- seq(from = .$outage_start, to = .$outage_end, by = "hour")
+    hourly_seq <- seq(from = .$outage_start, to =    .$outage_end, by = "hour")
     data.frame(
       .,
       row_start = hourly_seq,
@@ -135,32 +135,50 @@ write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
     # c. get from pixels to zctas
 # read in file created in python 
 denom <- read_parquet(paste0(clean_dir, "ca_gridded_zcta_pop.parquet"))
-num <- read_parquet(paste0(clean_dir, "ca_zcta_customers_impacted.parquet"))
+num <- read_parquet(paste0(clean_dir, "ca_zcta_psps_customers_impacted.parquet"))
 psps_clean <- num %>% 
-            left_join(denom, by = "zcta")
+            left_join(denom, by = "zcta") %>% 
+            mutate(
+                outage_start = as.POSIXct(outage_start,
+                    format = "%m/%d/%Y %H:%M",
+                    tz = "America/Los_Angeles"),
+                outage_end = as.POSIXct(outage_end,
+                    format = "%m/%d/%Y %H:%M",
+                    tz = "America/Los_Angeles"),
+                row_start = as.POSIXct(row_start,
+                    format = "%m/%d/%Y %H:%M",
+                    tz = "America/Los_Angeles"),
+                row_end = as.POSIXct(row_end,
+                    format = "%m/%d/%Y %H:%M",
+                    tz = "America/Los_Angeles"))
 
-# step 4: estimate the number of hours in every 24 hour period where {x}% or more of the customers were without power.
+# step 4: estimate the number of hours in every 24 hour period (day) where {x}% or more of the customers were without power.
     # we will use a data driven threshold (25%, 50%, etc.)
     # look at the distribution of percents and pick a reasonable cutpoint.
     # count up # of hours that have more than that % off
     # if we want a binary cut for a synthetic control, that can be based on the distribution
 thresholds <- c(0.25, 0.5, 0.75)
+threshold <- 0.25
 # for(threshold in thresholds){
 psps_clean <- psps_clean %>% 
-    mutate(customers_out_per_hr = customers_impacted/(as.numeric(row_end) - as.numeric(row_start)),
-        pct_cust_out = customers_out_per_hr/daily_pop,
-        pct_out_over_thresh = ifelse(pct_cust_out > threshold, 1, 0))
+    mutate(row_hr = ((as.numeric(row_end) - as.numeric(row_start))/60/60),
+        customers_out_per_hr = total_customers_impacted/row_hr,
+        pct_cust_out = customers_out_per_hr/pop,
+        pct_out_over_thresh = ifelse(pct_cust_out > threshold, 1, 0),
+        day = as_date(row_start)) # need to figure out how to split a row that spans 2 days 
 
-# calculate the number of hours in every 24h period where {x}% or more of the customers were without power
-# psps_collapse <- psps_clean %>% 
+# calculate the number of hours in psps_event_id - day where {x}% or more of the customers were without power
+psps_collapse_by_day <- psps_clean %>% 
+    group_by(psps_event_id, day) %>%
+    summarise(hrs_with_high_cust_out = sum(pct_out_over_thresh))
 
     # create histogram of pct_out value with vertical line at x% threshold using ggplot
-    ggplot(psps_clean, aes(x = pct_out_over_thresh)) + 
+    ggplot(psps_clean, aes(x = pct_cust_out)) + 
         geom_histogram(bins = 100, fill = "light blue") + 
         labs(title = paste("Histogram of percent of customers impacted (ZCTA level PSPS event-hour with", threshold*100, "% threshold"), 
             x = "Percent customers impacted", 
             y = "Frequency") + 
-        geom_vline(xintercept = threshold, color = "red", size = 2) + 
+        geom_vline(xintercept = threshold*100, color = "red", size = 2) + 
         theme_bw()
 # }
 
