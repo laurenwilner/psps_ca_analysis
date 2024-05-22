@@ -96,11 +96,8 @@ customers_hist_no0 <- ggplot(psps_temp %>% filter(total_customers_impacted > 0),
 # 2. map to zctas (IN PYTHON): 
     # a. map circuits to pixels using CA gridded pop data
     # b. map pixels to zctas
-# 4. estimate the number of hours in every 24 hour period where {x}% or more of the customers were without power.
-    # we will use a data driven threshold (25%, 50%, etc.) 
-    # look at the distribution of percents and pick a reasonable cutpoint. 
-    # count up # of hours that have more than that % off
-    # if we want a binary cut for a synthetic control, that can be based on the distribution
+# 3. diagnostics 
+
 
 # step 1: make each row a circuit-event-hr (ie sub_event-hr)
     # if there is overlap on times/circuits, average the rows
@@ -110,8 +107,8 @@ psps_hourly <- psps_temp %>%
     group_by(circuit_name_ica, psps_event_id, sub_event_id) %>%
     summarise(outage_start = as.POSIXct(mean(as.numeric(outage_start))),
         outage_end = as.POSIXct(mean(as.numeric(outage_end))),
-`        duration = mean(duration),
-`        total_customers_impacted = sum(total_customers_impacted),
+        duration = mean(duration),
+        total_customers_impacted = sum(total_customers_impacted),
         customers_out_per_hr = total_customers_impacted/duration) %>%
     ungroup()
 
@@ -226,9 +223,6 @@ dev.off()
 # how to collapse
     # what to do about rows with more than 100% out due to sub event handlign during collapse 
 # how to split rows that span multiple days
-
-
-
 
 
 
