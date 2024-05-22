@@ -58,7 +58,7 @@ def load_measure(measure_name: str) -> pd.DataFrame | gpd.GeoDataFrame:
 # Helper functions to write out particular data formats.
 
 def _write_geoparquet(data: gpd.GeoDataFrame, path: str):
-    gdf['geometry'] = gdf['geometry'].apply(lambda geom: geom.to_wkb())
+    # Ensure the 'pyarrow' and a recent enough 'geopandas' are installed.
     data.to_parquet(path, engine='pyarrow', index=False)
 
 

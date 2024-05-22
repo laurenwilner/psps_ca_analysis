@@ -6,13 +6,14 @@
 #-------------------------------------------------
 # setup
 library(pacman)
-p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse)
+p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scales)
 
 CRS = 'EPSG:3310' # this is california albers
 
 raw_dir <- ("~/Desktop/Desktop/epidemiology_PhD/data/raw/psps_circuit_data/")
 raw_raster_dir <- ("~/Desktop/Desktop/epidemiology_PhD/data/raw/")
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/data/clean/")
+plot_dir <- ("~/Desktop/Desktop/epidemiology_PhD/projects/psps/plots/")
 psps_file_name <- '2023.07.clean_psps_data.csv'
 
 #-------------------------------------------------
@@ -30,6 +31,8 @@ ca_pop_raster <- raster(paste0(raw_raster_dir, "CAPOP_2020_100m_TOTAL.tif"))
 
 zcta_shp <- st_read(paste0(clean_dir, "us_zcta_boundaries.geojson"))
 zcta_shp <- st_transform(zcta_shp, crs(CRS)) # tbd if this is the right direction
+zcta_ca <- read_parquet(paste0(clean_dir, "us_ca_zcta_shp.parquet"))
+zcta_ca <- st_as_sf(zcta_ca, crs = CRS)
 
 #-------------------------------------------------
 # helper functions
@@ -93,8 +96,6 @@ customers_hist_no0 <- ggplot(psps_temp %>% filter(total_customers_impacted > 0),
 # 2. map to zctas (IN PYTHON): 
     # a. map circuits to pixels using CA gridded pop data
     # b. map pixels to zctas
-# 3. merge households and businesses at zcta level (denominator = households+businesses at zcta level)
-    # SKIP THIS SINCE WE ARE USING PIXEL POP?? 
 # 4. estimate the number of hours in every 24 hour period where {x}% or more of the customers were without power.
     # we will use a data driven threshold (25%, 50%, etc.) 
     # look at the distribution of percents and pick a reasonable cutpoint. 
@@ -109,10 +110,12 @@ psps_hourly <- psps_temp %>%
     group_by(circuit_name_ica, psps_event_id, sub_event_id) %>%
     summarise(outage_start = as.POSIXct(mean(as.numeric(outage_start))),
         outage_end = as.POSIXct(mean(as.numeric(outage_end))),
-        duration = mean(duration),
-        total_customers_impacted = sum(total_customers_impacted),
+`        duration = mean(duration),
+`        total_customers_impacted = sum(total_customers_impacted),
         customers_out_per_hr = total_customers_impacted/duration) %>%
     ungroup()
+
+## TODO: USE TOTAL RESIDENTIAL TO MATCH DENOM AND BC WE CARE ABOTU RESIDENCES NOT BUSINESSES!
     
 psps_expanded <- psps_hourly %>%
   rowwise() %>%
@@ -127,7 +130,7 @@ psps_expanded <- psps_hourly %>%
   ungroup() %>%
   filter(row_start < outage_end) # if outage start is exactly the end of the outage for a given row, get rid of it. 
 
-write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
+# write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
 
 # step 2: map to zctas: I think i should do this in python
     # a. merge on polyline data
@@ -152,65 +155,127 @@ psps_clean <- num %>%
                     format = "%m/%d/%Y %H:%M",
                     tz = "America/Los_Angeles"))
 
-# step 4: estimate the number of hours in every 24 hour period (day) where {x}% or more of the customers were without power.
+write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean.csv"))
+
+
+
+psps_collapse <- psps_clean %>% 
+            group_by(psps_event_id, zcta, row_start) %>%
+            summarise(duration = sum(duration),
+                total_customers_impacted = sum(total_customers_impacted),
+                pop = mean(pop),
+                customers_out_per_hr = total_customers_impacted/duration,
+                pct_cust_out = total_customers_impacted/pop)
+
+
+# step 3: diagnostics
+# top outage events: 
+top_events <- psps_collapse %>% 
+    group_by(psps_event_id) %>% 
+    summarise(total_customers_impacted = sum(total_customers_impacted)) %>% 
+    arrange(desc(total_customers_impacted)) %>% 
+    head(10)
+top_event_ids <- top_events$psps_event_id
+
+top_events_map_df <- psps_collapse %>% 
+    filter(psps_event_id %in% top_event_ids) %>% 
+    group_by(psps_event_id, zcta) %>% 
+    summarise(total_customers_impacted = sum(total_customers_impacted),
+            pop = mean(pop)) %>% 
+    ungroup() %>% 
+    mutate(pct_cust_out = total_customers_impacted/pop) %>% 
+    left_join(zcta_shp, by = c("zcta")) %>% 
+    st_as_sf()
+
+# plot top events on map
+map <- ggplot() + 
+    geom_sf(data = zcta_ca, fill = "white", color = "gray") + 
+    geom_sf(data = top_events_map_df, aes(fill = total_customers_impacted), color = "black") + 
+    scale_fill_viridis_c() + 
+    labs(title = "Top 10 PSPS Events by ZCTA", 
+        fill = "Total Customers Impacted") + 
+    theme_void()
+map_pct <- ggplot() + 
+    geom_sf(data = zcta_ca, fill = "white", color = "gray") + 
+    geom_sf(data = top_events_map_df %>% filter(pct_cust_out <=100), aes(fill = pct_cust_out), color = "black") + 
+    scale_fill_viridis_c() + 
+    labs(title = "Top 10 PSPS Events by ZCTA", 
+        fill = "Percent Customers Impacted") + 
+    theme_void()
+
+hist <- ggplot(top_events_map_df, aes(x = total_customers_impacted)) + 
+    geom_histogram(bins = 100, fill = "light blue") + 
+    labs(title = "Histogram of Total Customers Impacted (by event-zcta)", 
+        x = "Total Customers Impacted", 
+        y = "Frequency") + 
+    theme_bw()
+
+hist_pct <- ggplot(top_events_map_df %>% filter(pct_cust_out<=100), aes(x = pct_cust_out)) + 
+    geom_histogram(bins = 100, fill = "light blue") + 
+    labs(title = "Histogram of Percent Customers Impacted (by event-zcta)", 
+        x = "Percent Customers Impacted", 
+        y = "Frequency") + 
+    theme_bw()
+
+pdf(paste0(plot_dir, "top_psps_events_plots.pdf"), width = 11, height = 8.5)
+hist + hist_pct
+map + map_pct
+dev.off()
+
+# outstanding issues 
+# how to collapse
+    # what to do about rows with more than 100% out due to sub event handlign during collapse 
+# how to split rows that span multiple days
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# step 3: estimate the number of hours in every 24 hour period (day) where {x}% or more of the customers were without power.
     # we will use a data driven threshold (25%, 50%, etc.)
     # look at the distribution of percents and pick a reasonable cutpoint.
     # count up # of hours that have more than that % off
     # if we want a binary cut for a synthetic control, that can be based on the distribution
-thresholds <- c(0.25, 0.5, 0.75)
-threshold <- 0.25
-# for(threshold in thresholds){
-psps_clean <- psps_clean %>% 
-    mutate(row_hr = ((as.numeric(row_end) - as.numeric(row_start))/60/60),
-        customers_out_per_hr = total_customers_impacted/row_hr,
-        pct_cust_out = customers_out_per_hr/pop,
-        pct_out_over_thresh = ifelse(pct_cust_out > threshold, 1, 0),
-        day = as_date(row_start)) # need to figure out how to split a row that spans 2 days 
+# thresholds <- c(0.25, 0.5, 0.75)
+# threshold <- 0.25
+# # for(threshold in thresholds){
+# psps_clean <- psps_clean %>% 
+#     mutate(row_hr = ((as.numeric(row_end) - as.numeric(row_start))/60/60), # this is to account for rows that are less than 1 hr at the end of an event
+#         customers_out_per_hr = total_customers_impacted/row_hr,
+#         pct_cust_out = customers_out_per_hr/pop,
+#         pct_out_over_thresh = ifelse(pct_cust_out > threshold, 1, 0),
+#         day = as_date(row_start))  # need to figure out how to split a row that spans 2 days 
 
-# calculate the number of hours in psps_event_id - day where {x}% or more of the customers were without power
-psps_collapse_by_day <- psps_clean %>% 
-    group_by(psps_event_id, day) %>%
-    summarise(hrs_with_high_cust_out = sum(pct_out_over_thresh))
+# # calculate the number of hours in psps_event_id - day where {x}% or more of the customers were without power
+# psps_collapse_by_day <- psps_clean %>% 
+#     group_by(psps_event_id, day, zcta, row_start) %>%
+#     summarise(duration = max(duration), 
+#             total_customers_impacted = max(total_customers_impacted),
+#             pct_out_over_thresh = max(pct_out_over_thresh)) %>% 
+#     unique() %>% 
+#     group_by(psps_event_id, day, zcta) %>% 
+#     summarise(hrs_with_high_cust_out = sum(pct_out_over_thresh)) %>% 
+#     ungroup()
 
-    # create histogram of pct_out value with vertical line at x% threshold using ggplot
-    ggplot(psps_clean, aes(x = pct_cust_out)) + 
-        geom_histogram(bins = 100, fill = "light blue") + 
-        labs(title = paste("Histogram of percent of customers impacted (ZCTA level PSPS event-hour with", threshold*100, "% threshold"), 
-            x = "Percent customers impacted", 
-            y = "Frequency") + 
-        geom_vline(xintercept = threshold*100, color = "red", size = 2) + 
-        theme_bw()
+
+# create histogram of pct_out value with vertical line at x% threshold using ggplot
+# ggplot(psps_collapse_by_day, aes(x = hrs_with_high_cust_out)) + 
+#     geom_histogram(bins = 100, fill = "light blue") + 
+#     labs(title = paste("Histogram of hours per day with more than ", threshold*100, "% of customers out"), 
+#         x = paste0("Hours per day with more than ", threshold*100, "% of customers out"), 
+#         y = "Frequency") + 
+#     # geom_vline(xintercept = threshold*100, color = "red", size = 2) + 
+#     theme_bw()
 # }
 
-# map the biggest outages 
-psps_big <- psps_clean %>% 
-    group_by(psps_event_id) %>% 
-    mutate(total_customers_impacted_event = sum(total_customers_impacted)) %>% 
-    ungroup() %>%
-    arrange(desc(total_customers_impacted_event)) %>%
-    slice_head(n = 10)
-
-psps_big_gdf <- psps_big %>% 
-    left_join(zcta_shp, by = c("zcta" = "ZCTA5CE10")) %>%
-    st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
-    st_transform(crs = CRS)
-
-ggplot() + 
-    geom_sf(data = zcta_shp, fill = "grey") + 
-    geom_sf(data = psps_big_gdf, aes(fill = customers_out_per_hr), size = 0.5) + 
-    scale_fill_viridis_c() + 
-    labs(title = "Top 10 PSPS Events by Customers Impacted per Hour", 
-        fill = "Customers Impacted") + 
-    theme_bw()
-
-
-# Questions
-# Step 1:
-    # QUESTION: WHAT DO WE WANT TO USE AS THE START/END TIME?
-        # currently, i am taking the mean start/end/duration and the sum of customer hours
-            # since each customer can only be on one segment so we should sum the customers
-            # but if we want average duration then we should average the start/end times so that
-            # duration still adds up
-# Step 4: 
-    # QUESTION: do we want to use a ceiling? if ratio of cust_out:pop is more than .8, we cap at .8? do we redistribute the customers? 
-    # QUESTION: i  am proportionally splitting customers_impacted by zcta, but not by time, which can create outliers if/when we do anything time based. this is because when i expand the data out to an hourly dataset, some rows are less than a full hr. for example, if an outage lasted 6h23m, then there will be 6 rows that are 1h in duration and one row that is 23min. this means that if there were 44 people impacted by this outage, we will have customers_impacted_per_hr at 44 for most rows (since its equal to customers_impacted when we have an hourly dataset) but then if we were to come into official rate space, it would be ~114. i would propose that we weight the customers_out in a row by the # of minutes (over 60) that that row represents. so that a row that is only 23m gets 16 people, rather than 44, in my example.ß
