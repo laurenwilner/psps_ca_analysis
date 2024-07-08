@@ -113,6 +113,7 @@ psps_hourly <- psps_temp %>%
     ungroup()
 
 ## TODO: USE TOTAL RESIDENTIAL TO MATCH DENOM AND BC WE CARE ABOTU RESIDENCES NOT BUSINESSES!
+## TODO: try to do this with max duration and max total customers out and then again with min and look at the differences and see how bad this is. look at how each of these affect the percent of customers out and then we can decide if this matters. 
     
 psps_expanded <- psps_hourly %>%
   rowwise() %>%
@@ -155,10 +156,9 @@ psps_clean <- num %>%
 write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean.csv"))
 
 
-
 psps_collapse <- psps_clean %>% 
             group_by(psps_event_id, zcta, row_start) %>%
-            summarise(duration = sum(duration),
+            summarise(duration = sum(duration), # should this be mean? or mutually exclusive sum
                 total_customers_impacted = sum(total_customers_impacted),
                 pop = mean(pop),
                 customers_out_per_hr = total_customers_impacted/duration,
