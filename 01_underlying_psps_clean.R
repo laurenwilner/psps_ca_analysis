@@ -114,6 +114,7 @@ psps_hourly <- psps_temp %>%
 
 
 ## TODO: USE TOTAL RESIDENTIAL TO MATCH DENOM AND BC WE CARE ABOTU RESIDENCES NOT BUSINESSES!
+## TODO: try to do this with max duration and max total customers out and then again with min and look at the differences and see how bad this is. look at how each of these affect the percent of customers out and then we can decide if this matters. 
     
 psps_expanded <- psps_hourly %>%
   rowwise() %>%
@@ -162,6 +163,7 @@ psps_clean_hourly <- psps_clean %>%
   ungroup() %>%
   mutate(hours_since_start = as.numeric(difftime(hour, outage_start, units = "hours"))) %>% 
   mutate(hours_since_start = ifelse(hours_since_start < 0, 0, hours_since_start))
+
 
 write.csv(psps_clean_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly.csv"))
 write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean.csv"))
