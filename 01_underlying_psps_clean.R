@@ -5,8 +5,8 @@
 
 #-------------------------------------------------
 # setup
-library(pacman)
-p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scales, knitr, kableExtra)
+if (!requireNamespace('pacman', quietly = TRUE)){install.packages('pacman')}
+pacman::p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scales, knitr, kableExtra)
 
 CRS = 'EPSG:3310' # this is california albers
 
@@ -32,6 +32,64 @@ duration_to_hours <- function(duration_str) {
   } else {
     return(NA)
   }
+}
+
+# collapse events that occur within one week of each other
+collapse_events_rle <- function(df) {
+  df <- df %>%
+    arrange(zcta, outage_start) %>%
+    mutate(event_group = 0)
+  current_group <- 1
+  unique_zctas <- unique(df$zcta)
+  for (z in unique_zctas) {
+    zcta_events <- df %>% filter(zcta == z)
+    for (i in seq_len(nrow(zcta_events))) {
+      if (zcta_events$event_group[i] == 0) {
+        zcta_events$event_group[i] <- current_group
+        j <- i + 1
+        while (j <= nrow(zcta_events) && zcta_events$outage_start[j] <= zcta_events$outage_start[i] + days(7)) {
+          zcta_events$event_group[j] <- current_group
+          j <- j + 1
+        }
+        current_group <- current_group + 1
+      }
+    }
+    df <- df %>%
+      filter(zcta != z) %>%
+      bind_rows(zcta_events)
+  }
+
+  df <- df %>%
+    group_by(zcta, event_group) %>%
+    summarize(
+      psps_event_id = first(psps_event_id),
+      outage_start = min(outage_start),
+      outage_end = max(outage_end),
+      total_customers_impacted = sum(total_customers_impacted), # im not sure about recalculating this here
+      duration = difftime(outage_end, outage_start, unit = "hours"), # i think we want to recalc duration here
+      pop = first(pop),
+      pct_cust_out = mean(pct_cust_out)
+    ) %>%
+    ungroup() %>%
+    select(-event_group) 
+  
+  return(df)
+}
+
+# exclude events more than one week but less than four weeks apart
+exclude_events_rle <- function(df) {
+  df <- df %>%
+    arrange(zcta, outage_start) %>%
+    group_by(zcta) %>%
+    mutate(
+      event_diff = lead(outage_start) - outage_start,
+      event_exclude = if_else(event_diff > days(7) & event_diff < days(28), TRUE, FALSE) # using 28 days as a 'month'
+      # excluding the event prior to the event that is in exclusion time period 
+    ) %>%
+    filter(!event_exclude | is.na(event_exclude)) %>%
+    ungroup() %>%
+    select(-event_diff, -event_exclude)
+  return(df)
 }
 
 #-------------------------------------------------
@@ -96,7 +154,11 @@ customers_hist_no0 <- ggplot(psps_temp %>% filter(total_customers_impacted > 0),
 # 2. map to zctas (IN PYTHON): 
     # a. map circuits to pixels using CA gridded pop data
     # b. map pixels to zctas
-# 3. diagnostics 
+# 3. washout period 
+    # anything within a week prior to an event gets collapsed to one event. 
+    # anything >1 and <4 weeks prior gets excluded.
+# 4. expand out to hourly dataset         
+# 5. diagnostics 
 
 
 # step 1: make each row a circuit-event-hr (ie sub_event-hr)
@@ -129,12 +191,14 @@ psps_expanded <- psps_hourly %>%
   ungroup() %>%
   filter(row_start < outage_end) # if outage start is exactly the end of the outage for a given row, get rid of it. 
 
-# write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
-
-# step 2: map to zctas: I think i should do this in python
+# step 2: map to zctas in python
     # a. merge on polyline data
     # b. get from polylines to pixels
     # c. get from pixels to zctas
+
+# write out file to do this in python
+    # write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
+
 # read in file created in python 
 denom <- read_parquet(paste0(clean_dir, "ca_gridded_zcta_pop.parquet"))
 num <- read_parquet(paste0(clean_dir, "ca_zcta_psps_customers_impacted.parquet"))
@@ -151,10 +215,15 @@ psps_clean <- num %>%
                 duration = as.numeric(duration, units = "hours"),
                 pct_cust_out = ifelse(pct_cust_out > 1, 1, pct_cust_out)) # if more than 100% of the population is out, set to 100%
 
+# step 3: include/exclude based on washout period: 
+    # anything within a week prior to an event gets collapsed to one event. 
+    # anything >1 and <4 weeks prior gets excluded.
+psps_washout <- collapse_events_rle(psps_clean)
+psps_analysis <- exclude_events_rle(psps_washout)
 
-                
+# step 4: expand out to hourly dataset         
 # expand back to hourly dataset
-psps_clean_hourly <- psps_clean %>%
+psps_clean_hourly <- psps_analysis %>%
   rowwise() %>%
   mutate(hour = list(seq(from = floor_date(outage_start, "hour"),
                          to = ceiling_date(outage_end, "hour") - hours(1),
@@ -168,7 +237,7 @@ psps_clean_hourly <- psps_clean %>%
 write.csv(psps_clean_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly.csv"))
 write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean.csv"))
 
-# step 3: diagnostics
+# step 5: diagnostics
 # top outage events: 
 top_events_abs <- psps_clean %>% 
     arrange(desc(total_customers_impacted)) %>% 
