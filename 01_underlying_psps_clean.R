@@ -10,11 +10,14 @@ pacman::p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scale
 
 CRS = 'EPSG:3310' # this is california albers
 
-raw_dir <- ("~/Desktop/Desktop/epidemiology_PhD/data/raw/psps_circuit_data/")
-raw_raster_dir <- ("~/Desktop/Desktop/epidemiology_PhD/data/raw/")
-clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/data/clean/")
-plot_dir <- ("~/Desktop/Desktop/epidemiology_PhD/projects/psps/plots/")
+raw_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/psps_circuit_data/")
+raw_raster_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/")
+clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
+plot_dir <- ("~/Desktop/Desktop/epidemiology_PhD/02_projects/psps/plots/")
 psps_file_name <- '2023.07.clean_psps_data.csv'
+
+washout <- FALSE
+wf_pm_threshold <- 35 # threshold for wildfire pm2.5 but should look at distribution before finalizing
 
 #-------------------------------------------------
 # helper functions
@@ -58,7 +61,6 @@ collapse_events_rle <- function(df) {
       filter(zcta != z) %>%
       bind_rows(zcta_events)
   }
-
   df <- df %>%
     group_by(zcta, event_group) %>%
     summarize(
@@ -114,34 +116,18 @@ zcta_shp <- st_read(paste0(clean_dir, "us_zcta_boundaries.geojson"))
 zcta_shp <- st_transform(zcta_shp, crs(CRS))
 zcta_ca <- read_parquet(paste0(clean_dir, "us_ca_zcta_shp.parquet"))
 zcta_ca <- st_as_sf(zcta_ca, crs = CRS)
+cali_zctas <- unique(zcta_ca$zcta)
 
-#-------------------------------------------------
-# EDA
-
-# histogram of outage_duration
-duration_hist <- ggplot(psps_temp, aes(x = duration)) + 
-    geom_histogram(bins = 100, fill = "light blue") + 
-    labs(title = "Histogram of Outage Duration (hours)", 
-        x = "Duration (hours)", 
-        y = "Frequency") + 
-    theme_bw()
-
-# histogram of total_customers_impacted
-customers_hist <- ggplot(psps_temp, aes(x = total_customers_impacted)) + 
-    geom_histogram(bins = 100, fill = "lightblue") + 
-    labs(title = "Histogram of Total Customers Impacted", 
-        x = "Total Customers Impacted", 
-        y = "Frequency") + 
-    theme_bw()
-
-# histogram of total_customers_impacted > 0
-customers_hist_no0 <- ggplot(psps_temp %>% filter(total_customers_impacted > 0), aes(x = total_customers_impacted)) + 
-    geom_histogram(bins = 100, fill = "light blue") + 
-    labs(title = "Histogram of Total Customers Impacted (>0)", 
-        x = "Total Customers Impacted", 
-        y = "Frequency") + 
-    theme_bw()
-
+wf <- read_csv(paste0(raw_dir, "../wfpm25_CT_2006to2020_updated_Aug2023.csv"))
+tract_to_zip_xwalk <- read_csv(paste0(raw_dir, "../ZIP_TRACT_032020.csv")) %>% 
+    select(ZIP, TRACT) %>%
+    mutate(TRACT = str_pad(TRACT, 11, side = "left", pad = 0), 
+            ZIP   = str_pad(ZIP,    5, side = "left", pad = 0)) %>% 
+    rename(zip_code = ZIP, tract = TRACT)
+zip_to_zcta_xwalk <- read_csv(paste0(raw_dir, "../zip_zcta_xref.csv")) %>% 
+    select(zip_code, zcta) %>%
+    mutate(zip_code = str_pad(zip_code, 5, side = "left", pad = 0), 
+            zcta = str_pad(zcta, 5, side = "left", pad = 0))
 
 #-------------------------------------------------
 # cleaning
@@ -157,8 +143,9 @@ customers_hist_no0 <- ggplot(psps_temp %>% filter(total_customers_impacted > 0),
 # 3. washout period 
     # anything within a week prior to an event gets collapsed to one event. 
     # anything >1 and <4 weeks prior gets excluded.
-# 4. expand out to hourly dataset         
-# 5. diagnostics 
+# 4. merge on wf data
+# 5. expand out to hourly dataset         
+# 6. diagnostics 
 
 
 # step 1: make each row a circuit-event-hr (ie sub_event-hr)
@@ -174,9 +161,6 @@ psps_hourly <- psps_temp %>%
         customers_out_per_hr = total_customers_impacted/duration) %>%
     ungroup()
 
-
-## TODO: USE TOTAL RESIDENTIAL TO MATCH DENOM AND BC WE CARE ABOTU RESIDENCES NOT BUSINESSES!
-## TODO: try to do this with max duration and max total customers out and then again with min and look at the differences and see how bad this is. look at how each of these affect the percent of customers out and then we can decide if this matters. 
     
 psps_expanded <- psps_hourly %>%
   rowwise() %>%
@@ -218,10 +202,30 @@ psps_clean <- num %>%
 # step 3: include/exclude based on washout period: 
     # anything within a week prior to an event gets collapsed to one event. 
     # anything >1 and <4 weeks prior gets excluded.
-psps_washout <- collapse_events_rle(psps_clean)
-psps_analysis <- exclude_events_rle(psps_washout)
 
-# step 4: expand out to hourly dataset         
+if(washout == TRUE){
+  psps_washout <- collapse_events_rle(psps_clean)
+  psps_analysis <- exclude_events_rle(psps_washout)
+} else{
+  psps_analysis <- psps_clean
+}
+
+# step 4: merge on wf data
+  # merging on the wf pm from the start date of the fire
+wf_ca <- wf %>% 
+    rename(tract = geoid) %>%
+    mutate(tract = as.character(tract),
+          tract = str_pad(tract, 11, side = "left", pad = 0)) %>% 
+    left_join(tract_to_zip_xwalk, by = "tract") %>% 
+    left_join(zip_to_zcta_xwalk, by = "zip_code") %>% 
+    filter(zcta %in% cali_zctas) %>%
+    group_by(zcta, date) %>% 
+    summarise(mean_wf_pm25 = mean(wf_pm25_aug2023, na.rm = TRUE))
+psps_analysis <- psps_analysis %>% 
+    mutate(date = date(outage_start)) %>%
+    left_join(wf_ca, by = c("zcta", "date"))
+
+# step 5: expand out to hourly dataset         
 # expand back to hourly dataset
 psps_clean_hourly <- psps_analysis %>%
   rowwise() %>%
@@ -233,11 +237,16 @@ psps_clean_hourly <- psps_analysis %>%
   mutate(hours_since_start = as.numeric(difftime(hour, outage_start, units = "hours"))) %>% 
   mutate(hours_since_start = ifelse(hours_since_start < 0, 0, hours_since_start))
 
+if(washout == TRUE){
+  write.csv(psps_clean_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly_washout.csv"))
+  write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean_washout.csv"))
+} else{
+  write.csv(psps_clean_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly_no_washout.csv"))
+  write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean_no_washout.csv"))
+}
 
-write.csv(psps_clean_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly.csv"))
-write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean.csv"))
 
-# step 5: diagnostics
+# step 6: diagnostics
 # top outage events: 
 top_events_abs <- psps_clean %>% 
     arrange(desc(total_customers_impacted)) %>% 
@@ -255,74 +264,5 @@ top_events_hybrid <- psps_clean %>%
             type = 'hybrid') %>%
     arrange(desc(hybrid)) %>%
     head(10)
-
 table_df <- rbind(top_events_abs, top_events_pct, top_events_hybrid)
-
 write.csv(table_df, paste0(plot_dir, "top_psps_events.csv"))
-
-
-
-# # step 3: aggregate the by day and ZCTA:
-
-# # A. summarize the data by ZCTA and day
-# # create variables event_in_last_week and event_in_last_month.
-# # filter out the rows where event_in_last_week is 0 and event_in_last_month is 1.
-
-# # agg data by day and ZCTA. sum total customers but average duration
-# psps_daily <- psps_clean %>%
-#     mutate(day = as.Date(row_start)) %>%
-#     group_by(zcta, day) %>%
-#     summarise(
-#         total_customers_impacted_day = sum(total_customers_impacted),
-#         duration_day = mean(duration),
-#         pop = first(pop)
-#     )
-
-# # create event_in_last_week and event_in_last_month variables
-# psps_daily <- psps_daily %>%
-#     arrange(zcta, day) %>%
-#     group_by(zcta) %>%
-#     mutate(
-#         event_in_last_week = lag(cumsum(!is.na(day)), 7, order_by = day) > 0,
-#         event_in_last_month = lag(cumsum(!is.na(day)), 30, order_by = day) > 0
-#     )
-
-# # filter out rows where there was an event in the last month but not the last week
-# psps_daily_filtered <- psps_daily %>%
-#     filter(!(event_in_last_week != TRUE & event_in_last_month == TRUE))
-
-# # B. plot
-# # identify the top 10 ZCTA-days based on total_customers_impacted and duration.
-# top_10_zcta_days_cust <- psps_daily_filtered %>%
-#     arrange(desc(total_customers_impacted_day)) %>%
-#     head(10) %>% 
-#     merge(zcta_ca, by = "zcta", all.x = TRUE) %>% 
-#     st_as_sf()
-# top_10_zcta_days_dur <- psps_daily_filtered %>%
-#     arrange(desc(duration_day)) %>%
-#     head(10) %>% 
-#     merge(zcta_ca, by = "zcta", all.x = TRUE) %>% 
-#     st_as_sf()
-
-# # create a map with CA counties as the basemap and the selected ZCTAs filled in based on the variables total_customers_impacted and duration
-# map_customers <- ggplot() + 
-#     geom_sf(data = zcta_ca, fill = "white", color = "gray") + 
-#     geom_sf(data = top_10_zcta_days_cust, aes(fill = total_customers_impacted_day), color = "black") + 
-#     scale_fill_viridis_c() + 
-#     labs(title = "Top 10 PSPS events by by ZCTA-day: customers impacted", 
-#         fill = "customers impacted") + 
-#     theme_void()
-# map_duration <- ggplot() + 
-#     geom_sf(data = zcta_ca, fill = "white", color = "gray") + 
-#     geom_sf(data = top_10_zcta_days_dur, aes(fill = duration_day), color = "black") + 
-#     scale_fill_viridis_c() + 
-#     labs(title = "Top 10 PSPS events by by ZCTA-day: duration", 
-#         fill = "duration") + 
-#     theme_void()
-
-# map_customers + map_duration
-
-
-
-
-
