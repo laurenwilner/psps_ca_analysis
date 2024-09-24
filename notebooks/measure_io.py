@@ -4,7 +4,7 @@ import geopandas as gpd
 import pandas as pd
 import pyarrow
 
-MEASURE_DATA_DIR = Path("/Users/laurenwilner/Desktop/Desktop/epidemiology_PhD/data/clean/")
+MEASURE_DATA_DIR = Path("/Users/laurenwilner/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 
 
 def create_measure(measure_data: pd.DataFrame | gpd.GeoDataFrame, measure_name: str) -> None:
