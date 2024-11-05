@@ -6,7 +6,7 @@
 #-------------------------------------------------
 # setup
 if (!requireNamespace('pacman', quietly = TRUE)){install.packages('pacman')}
-pacman::p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scales, knitr, kableExtra)
+pacman::p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scales, knitr, kableExtra, patchwork)
 
 CRS = 'EPSG:3310' # this is california albers
 
@@ -17,7 +17,7 @@ plot_dir <- ("~/Desktop/Desktop/epidemiology_PhD/02_projects/psps/plots/")
 psps_file_name <- '2023.07.clean_psps_data.csv'
 
 washout <- FALSE
-wf_pm_threshold <- 35 # threshold for wildfire pm2.5 but should look at distribution before finalizing
+wf_pm_threshold <- 15 # threshold for wildfire pm2.5 but should look at distribution before finalizing
 
 #-------------------------------------------------
 # helper functions
@@ -118,16 +118,20 @@ zcta_ca <- read_parquet(paste0(clean_dir, "us_ca_zcta_shp.parquet"))
 zcta_ca <- st_as_sf(zcta_ca, crs = CRS)
 cali_zctas <- unique(zcta_ca$zcta)
 
-wf <- read_csv(paste0(raw_dir, "../wfpm25_CT_2006to2020_updated_Aug2023.csv"))
-tract_to_zip_xwalk <- read_csv(paste0(raw_dir, "../ZIP_TRACT_032020.csv")) %>% 
-    select(ZIP, TRACT) %>%
-    mutate(TRACT = str_pad(TRACT, 11, side = "left", pad = 0), 
-            ZIP   = str_pad(ZIP,    5, side = "left", pad = 0)) %>% 
-    rename(zip_code = ZIP, tract = TRACT)
 zip_to_zcta_xwalk <- read_csv(paste0(raw_dir, "../zip_zcta_xref.csv")) %>% 
     select(zip_code, zcta) %>%
     mutate(zip_code = str_pad(zip_code, 5, side = "left", pad = 0), 
             zcta = str_pad(zcta, 5, side = "left", pad = 0))
+wf_ca <- read_csv(paste0(raw_dir, "../CAzip_wf_pm25_2006to2020.csv")) %>% 
+    mutate(zip_code = str_pad(zip_code, 5, side = "left", pad = 0)) %>%
+    left_join(zip_to_zcta_xwalk, by = "zip_code") %>%
+    select(zcta, date, wf_pm25)
+
+# tract_to_zip_xwalk <- read_csv(paste0(raw_dir, "../ZIP_TRACT_032020.csv")) %>% 
+#     select(ZIP, TRACT) %>%
+#     mutate(TRACT = str_pad(TRACT, 11, side = "left", pad = 0), 
+#             ZIP   = str_pad(ZIP,    5, side = "left", pad = 0)) %>% 
+#     rename(zip_code = ZIP, tract = TRACT)
 
 #-------------------------------------------------
 # cleaning
@@ -212,22 +216,29 @@ if(washout == TRUE){
 
 # step 4: merge on wf data
   # merging on the wf pm from the start date of the fire
-wf_ca <- wf %>% 
-    rename(tract = geoid) %>%
-    mutate(tract = as.character(tract),
-          tract = str_pad(tract, 11, side = "left", pad = 0)) %>% 
-    left_join(tract_to_zip_xwalk, by = "tract") %>% 
-    left_join(zip_to_zcta_xwalk, by = "zip_code") %>% 
-    filter(zcta %in% cali_zctas) %>%
+# wf_ca <- wf %>% 
+#     rename(tract = geoid) %>%
+#     mutate(tract = as.character(tract),
+#           tract = str_pad(tract, 11, side = "left", pad = 0)) %>% 
+#     left_join(tract_to_zip_xwalk, by = "tract") %>% 
+#     left_join(zip_to_zcta_xwalk, by = "zip_code") %>% 
+#     filter(zcta %in% cali_zctas) %>%
+#     group_by(zcta, date) %>% 
+#     summarise(mean_wf_pm25 = mean(wf_pm25_aug2023, na.rm = TRUE)) 
+  # take pop weighted mean rather than just a mean. so that if there are many tracts per zip, we weight by the percent overlap of each tract with each zip. 
+wf_ca_collapse <- wf_ca %>% 
     group_by(zcta, date) %>% 
-    summarise(mean_wf_pm25 = mean(wf_pm25_aug2023, na.rm = TRUE))
+    summarise(wf_pm25 = mean(wf_pm25, na.rm = TRUE)) %>% 
+    ungroup()
 psps_analysis <- psps_analysis %>% 
     mutate(date = date(outage_start)) %>%
-    left_join(wf_ca, by = c("zcta", "date"))
+    left_join(wf_ca_collapse, by = c("zcta", "date")) %>% 
+    mutate(wf_exposed = ifelse(wf_pm25 >= wf_pm_threshold, 1, 0)) %>% 
+    select(-c(date, wf_pm25))
 
 # step 5: expand out to hourly dataset         
 # expand back to hourly dataset
-psps_clean_hourly <- psps_analysis %>%
+psps_analysis_hourly <- psps_analysis %>%
   rowwise() %>%
   mutate(hour = list(seq(from = floor_date(outage_start, "hour"),
                          to = ceiling_date(outage_end, "hour") - hours(1),
@@ -238,31 +249,97 @@ psps_clean_hourly <- psps_analysis %>%
   mutate(hours_since_start = ifelse(hours_since_start < 0, 0, hours_since_start))
 
 if(washout == TRUE){
-  write.csv(psps_clean_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly_washout.csv"))
-  write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean_washout.csv"))
+  write.csv(psps_analysis_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly_washout.csv"))
+  write.csv(psps_analysis, paste0(clean_dir, "psps_underlying_zcta_clean_washout.csv"))
 } else{
-  write.csv(psps_clean_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly_no_washout.csv"))
-  write.csv(psps_clean, paste0(clean_dir, "psps_underlying_zcta_clean_no_washout.csv"))
+  write.csv(psps_analysis_hourly, paste0(clean_dir, "psps_underlying_zcta_clean_hourly_no_washout.csv"))
+  write.csv(psps_analysis, paste0(clean_dir, "psps_underlying_zcta_clean_no_washout.csv"))
 }
 
 
 # step 6: diagnostics
 # top outage events: 
-top_events_abs <- psps_clean %>% 
-    arrange(desc(total_customers_impacted)) %>% 
-    mutate(hybrid = total_customers_impacted * pct_cust_out,
-        type = 'absolute space') %>% 
-    head(10)
-top_events_pct <- psps_clean %>% 
-    filter(pct_cust_out ==1) %>%
-    arrange(desc(total_customers_impacted)) %>% 
-    mutate(hybrid = total_customers_impacted * pct_cust_out,
-            type = 'percent space') %>% 
-    head(10)
-top_events_hybrid <- psps_clean %>% 
-    mutate(hybrid = total_customers_impacted * pct_cust_out,
-            type = 'hybrid') %>%
-    arrange(desc(hybrid)) %>%
-    head(10)
-table_df <- rbind(top_events_abs, top_events_pct, top_events_hybrid)
-write.csv(table_df, paste0(plot_dir, "top_psps_events.csv"))
+# top_events_abs <- psps_clean %>% 
+#     arrange(desc(total_customers_impacted)) %>% 
+#     mutate(hybrid = total_customers_impacted * pct_cust_out,
+#         type = 'absolute space') %>% 
+#     head(10)
+# top_events_pct <- psps_clean %>% 
+#     filter(pct_cust_out ==1) %>%
+#     arrange(desc(total_customers_impacted)) %>% 
+#     mutate(hybrid = total_customers_impacted * pct_cust_out,
+#             type = 'percent space') %>% 
+#     head(10)
+# top_events_hybrid <- psps_clean %>% 
+#     mutate(hybrid = total_customers_impacted * pct_cust_out,
+#             type = 'hybrid') %>%
+#     arrange(desc(hybrid)) %>%
+#     head(10)
+# table_df <- rbind(top_events_abs, top_events_pct, top_events_hybrid)
+# write.csv(table_df, paste0(plot_dir, "top_psps_events.csv"))
+
+# pal <- met.brewer("Derain")
+
+# p1 <- ggplot(psps_analysis %>% filter(wf_pm25>0 & !is.na(wf_pm25)),
+#   aes(x = wf_pm25)) +
+#   geom_histogram(binwidth = 5, fill = pal[1], color = pal[1]) +
+#   theme_minimal() +
+#   labs(title = "Histogram of wf_pm25: all wf data on PSPS days",
+#     x = "pm", y = "frequency",
+#     caption = paste0(nrow(psps_analysis %>% filter(wf_pm25>0 & !is.na(wf_pm25))), " days with non-zero PM out of ", nrow(psps_analysis), " total events"))
+# p2a <- ggplot(psps_analysis %>% filter(wf_pm25>15 & !is.na(wf_pm25)),
+#   aes(x = wf_pm25)) +
+#   geom_histogram(binwidth = 2.5, fill = pal[3], color = pal[3]) +
+#   theme_minimal() +
+#   labs(title = "Histogram of wf_pm25: PM > 15 on PSPS days",
+#     x = "pm", y = "frequency",
+#     caption = paste0(nrow(psps_analysis %>% filter(wf_pm25>15 & !is.na(wf_pm25))), " days with non-zero PM > 15 out of ", nrow(psps_analysis), " total PSPS days"))
+# p2b <- ggplot(psps_analysis %>% filter(wf_pm25<15 & !is.na(wf_pm25) & wf_pm25 > 0),
+#   aes(x = wf_pm25)) +
+#   geom_histogram(binwidth = 1, fill = pal[2], color = pal[2]) +
+#   theme_minimal() +
+#   labs(title = "Histogram of wf_pm25: PM < 15 on PSPS days",
+#     x = "pm", y = "frequency",
+#     caption = paste0(nrow(psps_analysis %>% filter(wf_pm25<15 & !is.na(wf_pm25) & wf_pm25 > 0)), " days with non-zero PM < 15 out of ", nrow(psps_analysis), " total PSPS days"))
+# p3a <- ggplot(psps_analysis %>% filter(wf_pm25>25 & !is.na(wf_pm25)),
+#   aes(x = wf_pm25)) +
+#   geom_histogram(binwidth = 2.5, fill = pal[5], color = pal[5]) +
+#   theme_minimal() +
+#   labs(title = "Histogram of wf_pm25: PM > 25 on PSPS days",
+#     x = "pm", y = "frequency",
+#     caption = paste0(nrow(psps_analysis %>% filter(wf_pm25>25 & !is.na(wf_pm25))), " days with non-zero PM > 25 out of ", nrow(psps_analysis), " total PSPS days"))
+# p3b <- ggplot(psps_analysis %>% filter(wf_pm25<25 & !is.na(wf_pm25) & wf_pm25 > 0),
+#   aes(x = wf_pm25)) +
+#   geom_histogram(binwidth = 1, fill = pal[4], color = pal[4]) +
+#   theme_minimal() +
+#   labs(title = "Histogram of wf_pm25: PM < 25 on PSPS days",
+#     x = "pm", y = "frequency",
+#     caption = paste0(nrow(psps_analysis %>% filter(wf_pm25<25 & !is.na(wf_pm25) & wf_pm25 > 0)), " days with non-zero PM < 25 out of ", nrow(psps_analysis), " total PSPS days"))
+# p4a <- ggplot(psps_analysis %>% filter(wf_pm25>35 & !is.na(wf_pm25)),
+#   aes(x = wf_pm25)) +
+#   geom_histogram(binwidth = 2.5, fill = pal[7], color = pal[7]) +
+#   theme_minimal() +
+#   labs(title = "Histogram of wf_pm25: PM > 35 on PSPS days",
+#     x = "pm", y = "frequency",
+#     caption = paste0(nrow(psps_analysis %>% filter(wf_pm25>35 & !is.na(wf_pm25))), " days with non-zero PM > 35 out of ", nrow(psps_analysis), " total PSPS days"))
+# p4b <- ggplot(psps_analysis %>% filter(wf_pm25<35 & !is.na(wf_pm25) & wf_pm25 > 0),
+#   aes(x = wf_pm25)) +
+#   geom_histogram(binwidth = 1, fill = pal[6], color = pal[6]) +
+#   theme_minimal() +
+#   labs(title = "Histogram of wf_pm25: PM < 35 on PSPS days",
+#     x = "pm", y = "frequency",
+#     caption = paste0(nrow(psps_analysis %>% filter(wf_pm25<35 & !is.na(wf_pm25) & wf_pm25 > 0)), " days with non-zero PM < 35 out of ", nrow(psps_analysis), " total PSPS days"))
+
+# p1 + (p2b/p3b/p4b) + (p2a/p3a/p4a) + plot_layout(ncol = 3, nrow = 1)
+
+
+
+
+ics_209_2000_2019_link_to_all_cplx_data_distinct <- ics_209_2000_2019_link_to_all_cplx_data_distinct %>%
+  mutate(across(
+    c(
+      list_ics_209_counties_all,
+      list_ics_209_states_all,
+      ics_list_complexes_edited_names_all,
+      ics_list_fire_and_complex_names_all,
+      ics_209_cause_edit_all), ~ gsub("\\s*;\\s*" , ";" ,  .))) 
