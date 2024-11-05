@@ -31,7 +31,7 @@ psps_plot_dur <- psps %>% group_by(psps_event_id) %>% summarise(duration = mean(
 # choose cutoffs by using interpretable values near the tertile values: 
   quantiles_customers <- c(50,500)
   quantiles_prop <- c(.1,.3)
-  quantiles_hybrid <- c(10, 150)
+  quantiles_hybrid <- c(1, 150)
 
 # left tail of distribution
 plot_abs_low <- ggplot(psps %>% filter(total_customers_impacted < 1000), aes(x = total_customers_impacted)) +
