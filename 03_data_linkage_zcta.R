@@ -119,7 +119,6 @@ if(washout == TRUE){
 #-------------------------------------------------
 # step 4: merge on wf data
 # merging on the wf pm from the start date of the fire
-# TODO: take pop weighted mean rather than just a mean. so that if there are many tracts per zip, we weight by the percent overlap of each tract with each zip. 
 
 wf_ca_collapse <- wf_ca %>% 
     group_by(zcta, date) %>% 
