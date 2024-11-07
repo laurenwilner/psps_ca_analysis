@@ -24,7 +24,7 @@ These data from PSE compile PSPS event reports from (October 2013 through Decemb
 - Notes_Reported
 - PSE_Notes
 
-The variables we are using are explained below:
+## The variables we are using are explained below:
 - PSPS_Event_ID: Unique identifier for each PSPS event (PRIMARY KEY)
 - Sub_Event_ID: Concatination of PSPS_Event_ID and Circuit_Name_ICA (PRIMARY KEY)
 - Circuit_Name_ICA: Name of the circuit affected. Of note, we do not know if the full circuit was without power, we simply know that at least part of it was. Circuits can be de-energized and re-energized throughout an event, so they also may not have been without power for the entire duration of the event. (PRIMARY KEY)
@@ -40,7 +40,7 @@ The variables we are using are explained below:
 
 In addition to these data, we have polyline and polygon files for SGE, PGE, and SDGE circuits.
 
-We process the data according to the following steps: 
+## We process the data according to the following steps: 
 1. Clean up variable names and classes.
 2. Make each row a circuit-event-hr (ie sub_event-hr)
     - if there is overlap on times/circuits, average the rows
@@ -57,7 +57,7 @@ We process the data according to the following steps:
 6. Classify events as mild/moderate/severe
 
 
-The output data contain the following columns: 
+## The output data contain the following columns: 
 - geoid OR zcta: Either the census tract geoid or the zcta for a given row, depending on the resolution of the output dataset. Both are available. 
 - psps_event_id: Same as above -- event ID of a given PSPS event.
 - total_customers_impacted: Total customers impacted in a given geoid or zcta and for a given PSPS event. 
@@ -71,7 +71,7 @@ The output data contain the following columns:
 - severity_customers: This categorical indicator categorizes a PSPS event as mild, moderate, or severe based on the number of customers impacted. We do this by using values near the tertiles of the number of customers impacted to create cutoffs for these three categories. 
 - severity_hybrid: This categorical indicator categorizes a PSPS event as mild, moderate, or severe based on the hybrid metric described above. We do this by using values near the tertiles of the hybrid metric to create cutoffs for these three categories. 
 
-Pending tasks: 
+## Pending tasks: 
 1. For the wildfire smoke exposure, we want to switch to take pop weighted mean rather than just a mean. This means that if there are many tracts per zip, we weight by the percent overlap of each tract with each zip. Additionally, we can consider incorporating wildfire exposure at different lags and/or throughout the PSPS event. 
 2. We may consider switching from using total customers impacted to residential customers impacted. 
 
