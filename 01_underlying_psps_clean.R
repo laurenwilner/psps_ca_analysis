@@ -93,7 +93,7 @@ wf_ca <- read_csv(paste0(raw_dir, "../CAzip_wf_pm25_2006to2020.csv")) %>%
          
 # step 6 occurs in 03_classify_events.R script
 # 6. classify events as mild/moderate/severe
-df <- data.frame()
+
 
 # step 1: make each row a circuit-event-hr (ie sub_event-hr)
     # if there is overlap on times/circuits, average the rows
