@@ -14,6 +14,7 @@ raw_raster_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/")
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 plot_dir <- ("~/Desktop/Desktop/epidemiology_PhD/02_projects/psps/plots/")
 psps_file_name <- '2023.07.clean_psps_data.csv'
+repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 
 washout <- FALSE
 wf_pm_threshold <- 15 # threshold for wildfire pm2.5 but should look at distribution before finalizing
@@ -84,10 +85,16 @@ exclude_events_rle <- function(df) {
 denom <- read_parquet(paste0(clean_dir, "ca_gridded_zcta_pop.parquet"))
 num <- read_parquet(paste0(clean_dir, "ca_zcta_psps_customers_impacted.parquet"))
 
+# xwalk 
+zip_to_zcta_xwalk <- read.csv(paste0(repo, "zip_zcta_xref.csv")) %>% 
+    mutate(zip_code = str_pad(zip_code, 5, side = "left", pad = 0)) %>%
+    select(zip_code, zcta)
+
 # wf data
 wf_ca <- read_csv(paste0(raw_dir, "../CAzip_wf_pm25_2006to2020.csv")) %>% 
     mutate(zip_code = str_pad(zip_code, 5, side = "left", pad = 0)) %>%
     left_join(zip_to_zcta_xwalk, by = "zip_code") %>%
+    mutate(zcta = str_pad(zcta, 5, side = "left", pad = 0)) %>% 
     select(zcta, date, wf_pm25)
 
 #-------------------------------------------------
