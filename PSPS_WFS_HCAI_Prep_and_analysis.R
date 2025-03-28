@@ -1,6 +1,6 @@
 ## PSPS and Wildfire Smoke ##
 ## Notes: Processed HCAI data using "HCAI - OOI and t-s controls.R"
-## Caitlin Jones-Ngo, MS, PhD, 2/28/25
+## Caitlin Jones-Ngo, MS, PhD, 3/27/25
 
 library(tidyverse)
 library(readxl)
@@ -40,21 +40,51 @@ daily_exposure <- rbindlist(
 
 # assign daily PSPS values for all zcta-days in study
 dates <- seq.Date(as.Date("2013-01-01"), as.Date("2019-12-31"), by = "day")
-zcta <- unique(daily_exposure$zcta)
-zcta_days <- expand.grid(date = dates, zcta = zcta)
+ca_z <- unique(z_temp$zip)
+zip_days <- expand.grid(date = dates, zip_code = ca_z)
 
-psps_daily <- merge(zcta_days, daily_exposure, by = c("date","zcta"), all.x = TRUE)
+psps_daily <- merge(zip_days, daily_exposure, by = c("date","zip_code"), all.x = TRUE)
 psps_daily <- as.data.table(psps_daily)
 psps_daily[, zcta := as.character(zcta)]
 
-# fill non-event days with zero
-psps_daily[is.na(severity_customers), severity_customers := 0]
-psps_daily[is.na(severity_hybrid), severity_hybrid := 0]
+# Format PSPS exposure 
+psps_daily[is.na(severity_customers), severity_customers := "none"]
+psps_daily[is.na(severity_hybrid), severity_hybrid := "none"]
+psps_daily$severity_customers <- factor(psps_daily$severity_customers, 
+                                        levels = c("none", "Mild", "Moderate", "Severe"))
+psps_daily$severity_hybrid <- factor(psps_daily$severity_hybrid, 
+                                     levels = c("none", "Mild", "Moderate", "Severe"))
 
-# PSPS exposure lags
-psps_daily <- psps_daily %>%
-  group_by(zcta) %>%
-  arrange(zcta,date) %>%
+# Remove duplicate event days by selecting the maximum severity for each zip-day
+psps_daily$severity_customers_numeric <- as.numeric(psps_daily$severity_customers)
+psps_daily$severity_hybrid_numeric <- as.numeric(psps_daily$severity_hybrid)
+severity_levels <- c("none", "Mild", "Moderate", "Severe")
+
+duplicate_rows <- psps_daily[duplicated(psps_daily[, .(date, zip_code)]) | duplicated(psps_daily[, .(date, zip_code)], fromLast = TRUE)]
+setorder(duplicate_rows, date, zip_code)
+
+# Separate severity_customers and severity_hybrid processing for duplicates
+dupe_customers <- duplicate_rows[
+  , .SD[severity_customers_numeric == max(severity_customers_numeric), .SD[1]], 
+  by = .(date, zip_code)
+]
+
+dupe_hybrid <- duplicate_rows[
+  , .SD[severity_hybrid_numeric == max(severity_hybrid_numeric), .SD[1]], 
+  by = .(date, zip_code)
+]
+
+dupe_max <- merge(dupe_customers[,c(1:2,4)], dupe_hybrid[,c(1:2,5)], by = c("date", "zip_code"), all = TRUE)
+non_duplicates <- psps_daily[!duplicated(psps_daily[, .(date, zip_code)]) & !duplicated(psps_daily[, .(date, zip_code)], fromLast = TRUE)]
+
+psps_daily_max <- rbind(non_duplicates[,c(1:2,4:5)], dupe_max)
+
+psps_daily_max$severity_customers <- factor(psps_daily_max$severity_customers, levels = severity_levels)
+psps_daily_max$severity_hybrid <- factor(psps_daily_max$severity_hybrid, levels = severity_levels)
+
+psps_daily_max <- psps_daily_max %>%
+  group_by(zip_code) %>%
+  arrange(zip_code, date) %>%
   mutate(
     psps_abs_lag1 = lag(severity_customers, 1),
     psps_hyb_lag1 = lag(severity_hybrid, 1),
@@ -84,17 +114,19 @@ z_wfpms <- z_wfpms %>%
 
 
 ## (2) Assign exposure and outcome for analysis
-# Combine outcome and exposure
-ooi_psps <- merge(ooi_long, psps_daily, by.x = c("patzip", "serv_dt"), by.y = c("zcta", "date"), all.x = TRUE)
+# CA ZIP ONLY#
+ooi_ca <- ooi_long %>% filter(patzip %in% ca_z) # remove patients residing outside of CA
+
+# Combine outcome and exposure #
+ooi_psps <- merge(ooi_ca, psps_daily_max, by.x = c("patzip", "serv_dt"), by.y = c("zip_code", "date"), all.x = TRUE)
 ooi_psps_Wf <- merge(ooi_psps, z_wfpms, by.x = c("patzip", "serv_dt"), by.y = c("zip_code", "date"), all.x = TRUE)
 ooi_psps_Wft <- merge(ooi_psps_Wf, z_temps, by.x = c("patzip", "serv_dt"), by.y = c("zip", "date"), all.x = TRUE)
 
-# check missingness
-invalid_cc_ids <- ooi_psps_Wft[is.na(wf_lag5), .(cc_id)]
-ooi_psps_Wft <- ooi_psps_Wft[!cc_id %in% invalid_cc_ids$cc_id]
-invalid_zip_t <- ooi_psps_Wft[is.na(tmmx_C), .(patzip)]
-invalid_zip_t <- unique(invalid_zip_t)
-ooi_psps_Wft <- ooi_psps_Wft[!patzip %in% invalid_zip_t$patzip]
+# checks; no_ccid <- ooi_psps[is.na(cc_id), ]
+# no_psps <- ooi_psps[is.na(severity_hybrid), ]
+# invalid_cc_ids <- ooi_psps_Wf[is.na(wf_lag5), .(cc_id)]
+# invalid_zip_t <- ooi_psps_Wft[is.na(tmmx_C), .(patzip)]
+
 
 # age formatting
 ooi_psps_Wft[, agecat := fcase(
@@ -133,64 +165,10 @@ for (i in 1:length(dat)) {
   df <- dat[[i]]
   
   # Fit the models
-  absmodel <- clogit(case_indicator ~ severity_customers + mean_lag05_per10 + ns(tmmx_C, df = 4) + severity_customers*mean_lag05_per10
+  absmodel <- clogit(case_indicator ~ severity_customers + mean_lag05_per10 + ns(tmmx_C, df = 3) + severity_customers*mean_lag05_per10
                      + strata(cc_id), data = df)
   
-  hybmodel <- clogit(case_indicator ~ severity_hybrid + mean_lag05_per10 + ns(tmmx_C, df = 4) + severity_hybrid*mean_lag05_per10
-                     + strata(cc_id), data = df)
-  
-  # Absmodel results
-  coef_summary <- as.data.frame(summary(absmodel)["coefficients"])
-  or <- exp(coef_summary$coefficients.coef)
-  ci <- exp(confint(absmodel))
-  p <- coef_summary$coefficients.Pr...z..
-  exposures <- rownames(coef_summary)
-  
-  absresults <-  data.frame(
-    Exposure = exposures,
-    OR = or,
-    CI_Lower = ci[, 1],
-    CI_Upper = ci[, 2],
-    p = p,
-    stringsAsFactors = FALSE)
-  
-  # Hybmodel results
-  coef_summary <- as.data.frame(summary(hybmodel)["coefficients"])
-  or <- exp(coef_summary$coefficients.coef)
-  ci <- exp(confint(hybmodel))
-  p <- coef_summary$coefficients.Pr...z..
-  exposures <- rownames(coef_summary)
-  
-  hybresults <-  data.frame(
-    Exposure = exposures,
-    OR = or,
-    CI_Lower = ci[, 1],
-    CI_Upper = ci[, 2],
-    p = p,
-    stringsAsFactors = FALSE)
-  
-  # Combine results
-  results <- rbind(absresults, hybresults)
-  rm(df)
-  # Assign the result to a variable named results_<dataset_name>
-  assign(paste0("results2_", df_name[i]), results)
-}
-
-
-## (4) Run models for PSPS Lag 1 effects
-
-dat <- list(adult_resp, adult_copd, adult_cardio, adult_psych)
-df_name <- c("adult_resp", "adult_copd", "adult_cardio", "adult_psych")
-
-# Loop through each dataset
-for (i in 1:length(dat)) {
-  df <- dat[[i]]
-  
-  # Fit the models
-  absmodel <- clogit(case_indicator ~ psps_abs_lag1 + mean_lag05_per10 + ns(tmmx_C, df = 4) + psps_abs_lag1*mean_lag05_per10
-                     + strata(cc_id), data = df)
-  
-  hybmodel <- clogit(case_indicator ~ psps_hyb_lag1 + mean_lag05_per10 + ns(tmmx_C, df = 4) + psps_hyb_lag1*mean_lag05_per10
+  hybmodel <- clogit(case_indicator ~ severity_hybrid + mean_lag05_per10 + ns(tmmx_C, df = 3) + severity_hybrid*mean_lag05_per10
                      + strata(cc_id), data = df)
   
   # Absmodel results
@@ -226,59 +204,11 @@ for (i in 1:length(dat)) {
   # Combine results
   results <- rbind(absresults, hybresults)
   rm(df)
+  
+  # Save each model output
+  assign(paste0("absmodel_", df_name[i]), absmodel)
+  assign(paste0("hybmodel_", df_name[i]), hybmodel)
+  
   # Assign the result to a variable named results_<dataset_name>
-  assign(paste0("results_pspsl1_", df_name[i]), results)
-}
-
-
-## (5) Run models for PSPS Lag 2 effects
-dat <- list(adult_resp, adult_copd, adult_cardio, adult_psych)
-df_name <- c("adult_resp", "adult_copd", "adult_cardio", "adult_psych")
-
-# Loop through each dataset
-for (i in 1:length(dat)) {
-  df <- dat[[i]]
-  
-  # Fit the models
-  absmodel <- clogit(case_indicator ~ psps_abs_lag2 + mean_lag05_per10 + ns(tmmx_C, df = 4) + psps_abs_lag2*mean_lag05_per10
-                     + strata(cc_id), data = df)
-  
-  hybmodel <- clogit(case_indicator ~ psps_hyb_lag2 + mean_lag05_per10 + ns(tmmx_C, df = 4) + psps_hyb_lag2*mean_lag05_per10
-                     + strata(cc_id), data = df)
-  
-  # Absmodel results
-  coef_summary <- as.data.frame(summary(absmodel)["coefficients"])
-  or <- exp(coef_summary$coefficients.coef)
-  ci <- exp(confint(absmodel))
-  p <- coef_summary$coefficients.Pr...z..
-  exposures <- rownames(coef_summary)
-  
-  absresults <-  data.frame(
-    Exposure = exposures,
-    OR = or,
-    CI_Lower = ci[, 1],
-    CI_Upper = ci[, 2],
-    p = p,
-    stringsAsFactors = FALSE)
-  
-  # Hybmodel results
-  coef_summary <- as.data.frame(summary(hybmodel)["coefficients"])
-  or <- exp(coef_summary$coefficients.coef)
-  ci <- exp(confint(hybmodel))
-  p <- coef_summary$coefficients.Pr...z..
-  exposures <- rownames(coef_summary)
-  
-  hybresults <-  data.frame(
-    Exposure = exposures,
-    OR = or,
-    CI_Lower = ci[, 1],
-    CI_Upper = ci[, 2],
-    p = p,
-    stringsAsFactors = FALSE)
-  
-  # Combine results
-  results <- rbind(absresults, hybresults)
-  rm(df)
-  # Assign the result to a variable named results_<dataset_name>
-  assign(paste0("results_pspsl2_", df_name[i]), results)
+  assign(paste0("results3_", df_name[i]), results)
 }
