@@ -1,0 +1,406 @@
+---
+title: "PSPS Descriptives"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+    html_document:
+        df_print: paged
+        theme: cosmo
+        toc: yes
+    pdf_document:
+        toc: yes
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "build") })
+---
+
+```{r setup, echo=F, include=F}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+library(tidyverse)
+library(lubridate)
+library(ggpubr)
+library(knitr)
+library(sf)
+library(tigris)
+library(RColorBrewer)
+
+data_dir <- "/Users/laurenwilner/Desktop/Desktop/epidemiology_PhD/data/clean/"
+files <- c("ca_psps_daily_by_county.csv", "ca_psps_daily_by_tract.csv")
+
+wf_pm_path <- "/Users/laurenwilner/Desktop/Desktop/epidemiology_PhD/data/raw/wfpm25_CT_2006to2020_updated_Aug2023.csv"
+wf_pm <- read.csv(wf_pm_path) 
+# wf_pm_2019_2020 <- wf_pm %>% 
+#     mutate(date = as.Date(date)) %>%
+#     filter(date >= "2019-01-01")
+# write.csv(wf_pm_2019_2020, "/Users/laurenwilner/Desktop/Desktop/epidemiology_PhD/data/clean/wf_pm_2019_2020.csv", row.names = F)
+clean_path <- "/Users/laurenwilner/Desktop/Desktop/epidemiology_PhD/data/clean/wf_pm_2019_2020.csv"
+wf_pm <- read.csv(clean_path) %>% select(-c(X))
+
+counties <- counties(state = "CA", year = 2010)
+tracts <- tracts(state = "CA", year = 2010)
+
+pal = function(n) brewer.pal(n, "Purples")
+```
+
+# Introduction
+The Public Safety Power Shutoff (PSPS) data for California describes the number of customers without power during a PSPS event. Each row in the raw data represents a circuit, or a portion of a circuit, that was de-energized during a PSPS event within a specific census tract, along with the estimated number of customers impacted within that census tract and other related metadata. The data has been cleaned and aggregated to the county-day and tract-day level, where each row represents a unique county day or tract day. If an outage spans 2 days and 1 county, for example, there will be 2 rows for each county-day pair. The same logic applies to the tract level dataset. there  The column names and definitions in each of these datasets are: 
+```{r load_data, echo=F, warning=F, message=F}
+county <- read_csv(paste0(data_dir, files[1]))
+tract <- read_csv(paste0(data_dir, files[2]))
+
+county_names <- county %>% names()
+county_labels <- c("County FIPS code",
+    "Day", 
+    "Identifier for full PSPS events, which generally include multiple circuits. A concatenation of the reporting utility and the PSPS event start date",
+    "Circuit name as it appears in either the ICA or other geospatial data.",
+    "The earliest date and time a customer was de-energization on this circuit during this PSPS outage (Earliest accounts for different segments of a circuit being de-energized at different times)",
+    "Date and time when the last customers on a circuit had power restored during this outage on this circuit",
+    "Number of customer accounts (residential, commercial, other) impacted by the PSPS outage on this circuit in this census tract (summed tract customer accounts when collapsed to county)",
+    "Total population of the county (summed tract population when collapsed to a county)",
+    "Percent of the population impacted (tot_custout/total_population_ces)")
+tract_names <- tract %>% names()
+tract_labels <- c("Tract FIPS code",
+    "Day", 
+    "Identifier for full PSPS events, which generally include multiple circuits. A concatenation of the reporting utility and the PSPS event start date",
+    "Circuit name as it appears in either the ICA or other geospatial data.",
+    "The earliest date and time a customer was de-energization on this circuit during this PSPS outage (Earliest accounts for different segments of a circuit being de-energized at different times)",
+    "Date and time when the last customers on a circuit had power restored during this outage on this circuit",
+    "Number of customer accounts (residential, commercial, other) impacted by the PSPS outage on this circuit in this census tract",
+    "Total population of the census tract",
+    "Percent of the population impacted (tot_custout/total_population_ces)")
+
+kable(data.frame(tract_names, tract_labels),
+    col.names = c("Variable", "Definition"),
+    caption = "Tract-level data")
+kable(data.frame(county_names, county_labels),
+    col.names = c("Variable", "Definition"),
+    caption = "County-level data")
+```
+NOTE: *We are currently resolving issues with the duration variables so I have left these out, but we can calculate duration using the earliest and latest times of the outage, and we also have a weighted duration variable that we are trying to understand (`Customer_Weighted_Duration_Hrs`).*
+
+# Descriptive Figures 
+These data have been subset to only large outages, where large outages are defined as outages that affect either 50% or more of the population in a given circuit or last over 8 hours. All subsetting is done at the circuit level. The subsetting on duration is based on the variable that we currently have but will likely change when we get feedback on whether this variable is what we want.
+
+## Maps
+```{r county_defs, echo=F}
+# dataframes for plotting: avg_pct_out maps
+county_map_df <- county %>%
+            group_by(countyfp10) %>%
+            summarise(avg_pct_out = mean(pct_pop_out)) %>% 
+            left_join(counties, by = c("countyfp10" = "COUNTYFP10"))
+county_map_df <- st_as_sf(county_map_df)
+tract_map_df <- tract %>%
+            group_by(geoid10) %>%
+            summarise(avg_pct_out = mean(pct_pop_out)) %>% 
+            left_join(tracts, by = c("geoid10" = "GEOID10")) %>% 
+            filter(!is.infinite(avg_pct_out)) %>%
+            filter(avg_pct_out < 100) # this removes 6 rows
+tract_map_df <- st_as_sf(tract_map_df)
+
+
+# plots
+# plot(tract_map_df["avg_pct_out"], main = "Average % of Population Out by Census Tract",
+#     nbreaks = 9, breaks = "equal", pal = pal)
+avg1 <- ggplot(data = tracts) +
+  geom_sf(fill = "lightgray", color = NA) +
+  geom_sf(data = tract_map_df, aes(fill = avg_pct_out), 
+            color = NA, size = 0.1) +
+  scale_color_distiller(palette = "Purples", 
+                        direction = 1, 
+                        na.value = "lightgray", 
+                        guide = 'colorbar') +
+  labs(title = "Average % Population Out by Census Tract",
+    fill = "Average percent out") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        axis.text = element_text(angle = 45, hjust = 1))
+
+# plot(county_map_df["avg_pct_out"], main = "Average % of Population Out by County",
+#     nbreaks = 9, breaks = c(1, 2, 5, 7, 10, 12, 15, 17, 20), pal = pal)
+avg2 <- ggplot(data = counties) +
+  geom_sf(fill = "lightgray", color = NA) +
+  geom_sf(data = county_map_df, aes(fill = avg_pct_out), 
+            color = NA, size = 0.1) +
+  scale_color_distiller(palette = "Purples", 
+                        direction = 1, 
+                        na.value = "lightgray", 
+                        guide = 'colorbar', 
+                        name = "Average percent out") +
+  labs(title = "Average % Population Out by County",
+    fill = "Average percent out") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        axis.text = element_text(angle = 45, hjust = 1))
+
+ggarrange(avg1, avg2, ncol = 2)
+```
+
+
+```{r, echo=F, warning=F, message=F}
+# dataframes for plotting: big outages
+thresh <- quantile(tract$tot_custout, 0.9)
+big_outages <- tract %>% 
+    group_by(event_id, geoid10) %>%
+      summarise(tot_custout = sum(tot_custout)) %>%
+    filter(tot_custout > thresh) %>% 
+    ungroup() 
+big_outages_map_df <- big_outages %>% 
+    group_by(geoid10) %>%
+    summarise(max_custout = max(tot_custout)) %>%
+    left_join(tracts, by = c("geoid10" = "GEOID10"))
+big_outages_map <- st_as_sf(big_outages_map_df)
+
+# plot
+max_custout_map <- ggplot(data = tracts) +
+  geom_sf(fill = "lightgray", color = NA) + 
+  geom_sf(data = big_outages_map, aes(fill = max_custout), 
+            color = NA, size = 0.1) +
+  scale_color_distiller(palette = "Purples", 
+                        direction = 1, 
+                        na.value = "lightgray", 
+                        guide = 'colorbar') +
+  labs(title = "Max customers out in a given outage event by census tract \n subset to top 10% number of customers out \n in a given outage event",
+    fill = "max customers out") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        axis.text = element_text(angle = 45, hjust = 1),
+        legend.text=element_text(angle=45))
+```
+
+
+```{r, echo=F, warning=F, message=F}
+# map of counts of outages by census tract 
+count_df <- tract %>% 
+    group_by(geoid10) %>%
+    summarise(n=n()) %>%
+    left_join(tracts, by = c("geoid10" = "GEOID10"))
+count_map <- st_as_sf(count_df)
+
+count_map <- ggplot(data = tracts) +
+  geom_sf(fill = "lightgray", color = NA) +
+  geom_sf(data = count_map, aes(fill = n), 
+            color = NA, size = 0.1) +
+  scale_color_distiller(palette = "Purples", 
+                        direction = 1, 
+                        na.value = "lightgray", 
+                        guide = 'colorbar', 
+                        name = "Number of Outages") +
+  labs(title = "Number of Outages by Census Tract",
+    fill = "number of outages") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        axis.text = element_text(angle = 45, hjust = 1))
+
+ggarrange(max_custout_map, count_map, ncol = 2)
+```
+
+### Outages affecting 20% + of the population
+```{r, echo=F, message=F, warning=F}
+# prep data
+pct_out_thresh <- 20
+outages_20perc_plus_sm <- county %>% 
+    group_by(event_id) %>%
+    summarise(min_pct_out = min(pct_pop_out),
+            max_pct_out = max(pct_pop_out),
+            avg_pct_out = mean(pct_pop_out)) %>%
+    filter(max_pct_out > pct_out_thresh) %>% # filtering on max for now
+    ungroup()
+outages_20perc_plus <- county %>% 
+    group_by(event_id) %>%
+    mutate(min_pct_out = min(pct_pop_out),
+            max_pct_out = max(pct_pop_out),
+            avg_pct_out = mean(pct_pop_out)) %>%
+    filter(max_pct_out > pct_out_thresh) %>% # filtering on max for now
+    ungroup() %>% 
+    left_join(counties, by = c("countyfp10" = "COUNTYFP10"))
+
+outages_20perc_plus <- st_as_sf(outages_20perc_plus)
+```
+
+```{r, echo=F}
+# tables and maps of data
+kable(outages_20perc_plus_sm, 
+    col.names = c("Event ID", "Min % Out", "Max % Out", "Avg % Out"),
+    caption = "Outages with a Maximum % out >= 20%")
+
+g1 <- ggplot(data = counties) +
+  geom_sf(fill = "lightgray", color = NA) +
+  geom_sf(data = outages_20perc_plus, aes(fill = min_pct_out), 
+            color = NA, size = 0.1) +
+  scale_color_distiller(palette = "Purples", 
+                        direction = 1, 
+                        na.value = "lightgray", 
+                        guide = 'colorbar', 
+                        name = "Minimum percent out") +
+  labs(title = "Minimum % of Population Out by County \n in a given PSPS event",
+        fill = "Minimum percent out") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        axis.text = element_text(angle = 45, hjust = 1))
+
+g2 <- ggplot(data = counties) +
+  geom_sf(fill = "lightgray", color = NA) +
+  geom_sf(data = outages_20perc_plus, aes(fill = max_pct_out), 
+            color = NA, size = 0.1) +
+  scale_color_distiller(palette = "Purples", 
+                        direction = 1, 
+                        na.value = "lightgray", 
+                        guide = 'colorbar', 
+                        name = "Maximum percent out") +
+  labs(title = "Maximum % of Population Out by County \n in a given PSPS event",
+        fill = "Maximum percent out") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        axis.text = element_text(angle = 45, hjust = 1))
+
+ggarrange(g1,g2,ncol=2)
+```
+
+### Overlay PSPS with WF risk for outages affecting 20% + 
+*Note: the outage with the longest duration in terms of days out had 60 days out, so I mapped the second, third, and fourth longest outages.*
+```{r, echo=F, message=F, warning=F, results=F}
+# overlay map with WF risk
+wf_merge <- wf_pm %>% 
+            mutate(date = as.Date(date), 
+                    geoid = as.character(geoid)) %>% 
+            mutate(geoid = str_pad(geoid, 11, pad = "0")) %>% 
+            mutate(geoid = str_sub(geoid, 1, 5)) %>%
+            group_by(geoid, date) %>%
+            summarise(wf_pm25_aug2023 = mean(wf_pm25_aug2023)) %>% # mean pm25 across county
+            rename(wf_pm = wf_pm25_aug2023)
+
+wf_psps <- outages_20perc_plus %>% 
+    group_by(event_id, countyfp10) %>%
+    mutate(days = difftime(latest_out, earliest_out, units = "days"),
+            total_days = sum(days)) %>% 
+    select(countyfp10, event_id, day, days, total_days, pct_pop_out, max_pct_out, GEOID10, geometry) %>%
+    ungroup() %>%
+    left_join(wf_merge, by = c("GEOID10" = "geoid", "day" = "date")) 
+    
+longest_outages <- c("PG&E_2019/10/26", "PG&E_2019/10/09", "PG&E_2020/10/25")
+
+wf_psps <- wf_psps %>% 
+    filter(event_id %in% longest_outages) %>% 
+    select(event_id, day, max_pct_out, wf_pm, geometry)
+
+wf_psps <- st_as_sf(wf_psps)
+wf_psps <- st_transform(wf_psps, crs = st_crs(tracts))
+
+plot_list <- list()
+for(o in longest_outages){
+    wf_outage <- wf_psps %>% 
+        filter(event_id == o)
+    max <- max(wf_outage$max_pct_out) %>% round(2)
+
+    g <- ggplot(data = counties) +
+        geom_sf(fill = "lightgray", color = NA) +
+        geom_sf(data = wf_outage, aes(fill = wf_pm), size = 0.1) +
+        scale_color_distiller(palette = "Purples", 
+                        direction = 1, 
+                        na.value = "lightgray", 
+                        guide = 'colorbar', 
+                        name = "Wildfire Pm 2.5") +
+        labs(title = paste0("Wildfire PM2.5 Exposure & PSPS Outages by Day and Census Tract \n Event ID ", o, " , Max % out = ", max, "%"),
+            fill = "wildfire pm") +
+        theme_minimal() +
+        theme(plot.title = element_text(hjust = 0.5, size = 8),
+                legend.position = "bottom",
+                legend.title = element_text(size = 8),
+                axis.text.x = element_blank(),
+                axis.text.y = element_blank()) +
+        facet_grid(cols = vars(day))
+    plot_list[[o]] <- g
+    }
+
+# plots
+plot_list[1]
+plot_list[2]
+plot_list[3]
+# wf <- wf_psps %>% arrange(desc(total_days)) %>% filter(total_days<50) %>% group_by(event_id, total_days) %>% summarise(n=n())
+```
+
+
+
+## Plots
+```{r tract_defs, echo=F}
+# dataframes for plotting
+tract_bar_df <- tract %>%
+    group_by(day) %>%
+    summarise(avg_pct_out = mean(pct_pop_out)) %>%
+    mutate(day = as.Date(day)) %>% 
+    filter(avg_pct_out < 50)
+tract_bar_high_df <- tract %>%
+    group_by(day) %>%
+    summarise(avg_pct_out = mean(pct_pop_out)) %>%
+    mutate(day = as.Date(day)) %>% 
+    filter(avg_pct_out > 50)
+county_bar_df <- county %>%
+    group_by(day) %>%
+    summarise(avg_pct_out = mean(pct_pop_out)) %>%
+    mutate(day = as.Date(day)) %>% 
+    filter(avg_pct_out < 20)
+
+# plot
+bar1 <- ggplot(tract_bar_df, 
+    aes(x = day, y = avg_pct_out)) +
+    geom_bar(stat="identity") +
+    labs(title = "Average percent of population out \n by census tract (subset to < 50%)",
+        x = "Day",
+        y = "Percent of Population Out", 
+        caption = "Max percent population out is 97% in 47 rows") +
+    theme_minimal() + 
+    theme(plot.title = element_text(hjust = 0.5, size = 10))
+
+bar2 <- ggplot(county_bar_df, 
+    aes(x = day, y = avg_pct_out)) + 
+    geom_bar(stat="identity") +
+    labs(title = "Average percent of population out \n by county (subset to < 20%)",
+        x = "Day",
+        y = "Percent of Population Out", 
+        caption = "Max average percent out = 24.2% in 1 row") +
+    theme_minimal() + 
+    theme(plot.title = element_text(hjust = 0.5, size = 10))
+
+ggarrange(bar1, bar2, ncol = 2)
+```
+
+```{r duration, echo=F, warning=F, message=F}
+# dataframes for plotting: duration
+tract_duration <- tract %>%
+    mutate(duration = as.numeric(difftime(latest_out, earliest_out,
+    units = "hours"))) %>% 
+    filter(duration < 24)
+tract_dur_df <- tract_duration %>%
+    group_by(event_id, circuit) %>%
+    mutate(avg_duration = mean(duration)) %>%
+    mutate(day = as.Date(day))
+
+# plot
+ggplot(tract_dur_df,
+    aes(x = duration)) +
+    geom_bar() +
+    labs(title = "Frequency of hours/day out (subset to outages that span less than 1 full day)",
+        x = "Average Duration (hours)", 
+        caption = "These durations are # of hours per outage-day. \n If an outage lasted a whole day, \n it is not reflected here for legibility purposes. \n 5,990 outages lasted more than 1 day.") +
+    theme_minimal()
+
+
+psps_clusters <- tract %>% 
+    group_by(event_id) %>%
+    summarise(n=n())
+```
+
