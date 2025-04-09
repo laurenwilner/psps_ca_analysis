@@ -1,25 +1,33 @@
 #-------------------------------------------------
-# PSPS: Classify events by severity (census tract)
-# November 2024
+# PSPS: Classify PSPS events by severity (CT)
+# author: Lauren Blair Wilner
+# updated: April 9, 2025
+
 #-------------------------------------------------
 # setup
 if (!requireNamespace('pacman', quietly = TRUE)){install.packages('pacman')}
 pacman::p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scales, knitr, kableExtra, patchwork)
 
-CRS = 'EPSG:3310' # this is california albers
-
-raw_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/psps_circuit_data/")
-raw_raster_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/")
+intermediate_dir <- paste0(repo, "data/intermediate/")
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
-plot_dir <- ("~/Desktop/Desktop/epidemiology_PhD/02_projects/psps/plots/")
-psps_file_name <- 'ca_ct_daily_psps_no_washout_2013-2022.csv'
+repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 
-psps_temp <- read.csv(paste0(clean_dir, psps_file_name))
-psps <- psps_temp %>% filter(!is.na(pct_cust_out)) %>% mutate(hybrid = total_customers_impacted * pct_cust_out)
-
+# psps <- read.csv(paste0(clean_dir, "ca_ct_hourly_psps_no_washout_wf_2013-2022.csv"))
+psps <- read.csv(paste0(intermediate_dir, "ca_ct_daily_psps_no_washout_wf_2013-2022.csv"))
 
 #-------------------------------------------------
 # classify events: mild, moderate, severe
+# NOTE: only doing this for the no washout data because that is what we use in this particular analysis, which we need classifications for. 
+# calculate quantiles
+  quantiles_customers <- quantile(psps$total_customers_impacted, probs = c(.33,.66), na.rm = TRUE)
+  quantiles_hybrid <- quantile(psps$hybrid, probs = c(.33,.66), na.rm = TRUE)
+# choose cutoffs by using interpretable values near the tertile values: 
+  # quantiles_customers <- c(50,500)
+  # quantiles_hybrid <- c(1, 150)
+  quantiles_customers <- c(15,300)
+  quantiles_hybrid <- c(1, 30)
+
+
 psps_class <- psps %>%
   mutate(
     severity_customers = case_when(
@@ -32,6 +40,6 @@ psps_class <- psps %>%
       hybrid <= quantiles_hybrid[2] ~ "Moderate",
       TRUE ~ "Severe"
     )
-  ) 
+  )
 
 write.csv(psps_class, paste0(clean_dir, 'ca_ct_daily_psps_no_washout_classified_2013-2022.csv'), row.names = FALSE)

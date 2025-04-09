@@ -1,6 +1,8 @@
 #-------------------------------------------------
 # PSPS: Crosswalk from ZCTA to Zip Code for analysis
+# author: Lauren Blair Wilner
 # March 2025
+
 #-------------------------------------------------
 # setup
 if (!requireNamespace('pacman', quietly = TRUE)){install.packages('pacman')}
