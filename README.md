@@ -55,6 +55,7 @@ In addition to these data, we have polyline and polygon files for SGE, PGE, and 
 4. Merge on wildfire data and create a binary indicator 
 5. Expand out to hourly dataset (though we don't have hourly granularity, so we may consider skipping this as the metrics are all constant across all hours of an event.)
 6. Classify events as mild/moderate/severe
+7. OPTIONAL: Crosswalk exposure to zip code (from ZCTA) because the outcome data for this analysis will be zip code level.
 
 ## The output data contain the following columns: 
 - geoid OR zcta: Either the census tract geoid or the zcta for a given row, depending on the resolution of the output dataset. Both are available. 
