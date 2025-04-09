@@ -41,8 +41,8 @@ These data from PSE compile PSPS event reports from (October 2013 through Decemb
 In addition to these data, we have polyline and polygon files for SGE, PGE, and SDGE circuits.
 
 ## We process the data according to the following steps: 
-1. Clean up variable names and classes.
-2. Make each row a circuit-event-hr (ie sub_event-hr)
+1. `01_underlying_psps_clean`: Clean up variable names and classes.
+- Make each row a circuit-event-hr (ie sub_event-hr)
     - if there is overlap on times/circuits, average the rows
     - calculate the number of customers impacted in each circuit hour
     - calculate the number of customers hours without power in each sub_event (absolute metric of power loss)
@@ -55,7 +55,6 @@ In addition to these data, we have polyline and polygon files for SGE, PGE, and 
 4. Merge on wildfire data and create a binary indicator 
 5. Expand out to hourly dataset (though we don't have hourly granularity, so we may consider skipping this as the metrics are all constant across all hours of an event.)
 6. Classify events as mild/moderate/severe
-
 
 ## The output data contain the following columns: 
 - geoid OR zcta: Either the census tract geoid or the zcta for a given row, depending on the resolution of the output dataset. Both are available. 
