@@ -13,9 +13,9 @@ repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 intermediate_dir <- paste0(repo, "data/intermediate/")
 
 if(washout == TRUE){
-  psps_temp <- read_csv(paste0(intermediate_dir, "ca_ct_daily_psps_washout_wf_2013-2022.csv"))
+  psps_temp <- read_csv(paste0(clean_dir, "ca_ct_event_level_psps_washout_wf_2013-2022.csv"))
 } else{
-  psps_temp <- read_csv(paste0(intermediate_dir, "ca_ct_daily_psps_no_washout_wf_2013-2022.csv"))
+  psps_temp <- read_csv(paste0(clean_dir, "ca_ct_event_level_psps_no_washout_wf_2013-2022.csv"))
 }
 
 #-------------------------------------------------

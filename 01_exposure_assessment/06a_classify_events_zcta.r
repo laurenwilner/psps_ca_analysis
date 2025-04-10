@@ -39,4 +39,4 @@ psps_class <- psps %>%
     )
   )
 
-write.csv(psps_class, paste0(clean_dir, 'ca_zcta_daily_psps_no_washout_wf_classified_2013-2022.csv'), row.names = FALSE)
+write.csv(psps_class, paste0(clean_dir, 'ca_zcta_event_level_psps_no_washout_wf_classified_2013-2022.csv'), row.names = FALSE)
