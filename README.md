@@ -46,7 +46,7 @@ In addition to these data, we have polyline and polygon files for SGE, PGE, and 
     - if there is overlap on times/circuits, average the rows
     - calculate the number of customers impacted in each circuit hour
     - calculate the number of customers hours without power in each sub_event (absolute metric of power loss)
-2. Map data to either census tracts or zctas (IN PYTHON): 
+2. Map data to either census tracts or zctas (**NOTE:** IN PYTHON): 
     - map circuits to pixels using CA gridded pop data
     - map pixels to zctas
 3. Incorporate a washout period if relevant. Currently doing this by: 
@@ -71,7 +71,4 @@ In addition to these data, we have polyline and polygon files for SGE, PGE, and 
 - severity_customers: This categorical indicator categorizes a PSPS event as mild, moderate, or severe based on the number of customers impacted. We do this by using values near the tertiles of the number of customers impacted to create cutoffs for these three categories. 
 - severity_hybrid: This categorical indicator categorizes a PSPS event as mild, moderate, or severe based on the hybrid metric described above. We do this by using values near the tertiles of the hybrid metric to create cutoffs for these three categories. 
 
-## Pending tasks: 
-1. For the wildfire smoke exposure, we want to switch to take pop weighted mean rather than just a mean. This means that if there are many tracts per zip, we weight by the percent overlap of each tract with each zip. Additionally, we can consider incorporating wildfire exposure at different lags and/or throughout the PSPS event. 
-2. We may consider switching from using total customers impacted to residential customers impacted. 
 
