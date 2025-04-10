@@ -12,6 +12,8 @@ intermediate_dir <- paste0(repo, "data/intermediate/")
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 
+washout <- FALSE # set to TRUE if you want to apply washout period
+
 # psps <- read.csv(paste0(clean_dir, "ca_zcta_hourly_psps_no_washout_wf_2013-2022.csv"))
 psps <- read.csv(paste0(intermediate_dir, "ca_zcta_daily_psps_no_washout_wf_2013-2022.csv"))
 

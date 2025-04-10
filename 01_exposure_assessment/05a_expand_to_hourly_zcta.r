@@ -18,6 +18,8 @@ if(washout == TRUE){
   psps_temp <- read_csv(paste0(clean_dir, "ca_zcta_event_level_psps_no_washout_wf_2013-2022.csv"))
 }
 
+washout <- FALSE # set to TRUE if you want to apply washout period
+
 #-------------------------------------------------
 # step 5: expand out to hourly dataset         
 # expand back to hourly dataset

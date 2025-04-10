@@ -14,6 +14,8 @@ raw_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/psps_circuit_data/")
 
 wf_pm_threshold <- 15 # threshold for wildfire pm2.5 
 
+washout <- FALSE # set to TRUE if you want to apply washout period
+
 #-------------------------------------------------
 # read in data
 

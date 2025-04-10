@@ -12,6 +12,8 @@ clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 intermediate_dir <- paste0(repo, "data/intermediate/")
 
+washout <- FALSE # set to TRUE if you want to apply washout period
+
 #-------------------------------------------------
 # helper functions
 # collapse events that occur within one week of each other

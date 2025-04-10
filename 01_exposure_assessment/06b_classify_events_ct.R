@@ -12,8 +12,13 @@ intermediate_dir <- paste0(repo, "data/intermediate/")
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 
-# psps <- read.csv(paste0(clean_dir, "ca_ct_hourly_psps_no_washout_wf_2013-2022.csv"))
-psps <- read.csv(paste0(clean_dir, "ca_ct_event_level_psps_no_washout_wf_2013-2022.csv"))
+washout <- FALSE # set to TRUE if you want to apply washout period
+
+if(washout <- TRUE){
+  psps <- read.csv(paste0(clean_dir, "ca_ct_hourly_psps_washout_wf_2013-2022.csv"))
+} else{
+  psps <- read.csv(paste0(clean_dir, "ca_ct_event_level_psps_no_washout_wf_2013-2022.csv"))
+}
 
 #-------------------------------------------------
 # classify events: mild, moderate, severe
@@ -42,4 +47,8 @@ psps_class <- psps %>%
     )
   )
 
-write.csv(psps_class, paste0(clean_dir, 'ca_ct_event_level_psps_no_washout_classified_2013-2022.csv'), row.names = FALSE)
+if(washout == TRUE){
+write.csv(psps_class, paste0(clean_dir, 'ca_ct_event_level_psps_washout_classified_2013-2022.csv'), row.names = FALSE)
+}else {
+write.csv(psps_class, paste0(clean_dir, 'ca_ct_event_level_psps_no_washout_wf_classified_2013-2022.csv'), row.names = FALSE)
+}
