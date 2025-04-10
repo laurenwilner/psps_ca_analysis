@@ -11,6 +11,7 @@ pacman::p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scale
 repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 intermediate_dir <- paste0(repo, "data/intermediate/")
 raw_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/psps_circuit_data/")
+clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 
 wf_pm_threshold <- 15 # threshold for wildfire pm2.5 
 
@@ -21,9 +22,9 @@ washout <- FALSE # set to TRUE if you want to apply washout period
 
 # these files are the output of script 03.
 if(washout == TRUE){
-psps_temp <- read_csv(paste0(intermediate_dir, "ca_ct_daily_psps_washout_2013-2022.csv"))
+psps_temp <- read_csv(paste0(intermediate_dir, "ca_ct_event_level_psps_washout_2013-2022.csv"))
 } else{
-psps_temp <- read_csv(paste0(intermediate_dir, "ca_ct_daily_psps_no_washout_2013-2022.csv"))
+psps_temp <- read_csv(paste0(intermediate_dir, "ca_ct_event_level_psps_no_washout_2013-2022.csv"))
 }
 
 # wf data

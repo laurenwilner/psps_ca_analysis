@@ -107,9 +107,9 @@ if(washout == TRUE){
   psps_analysis <- psps_clean
 }
 
-# write out daily data with/without washout 
+# write out event level data with/without washout 
 if(washout == TRUE){
-  write.csv(psps_analysis, paste0(intermediate_dir, "ca_zcta_daily_psps_washout_2013-2022.csv"), row.names = FALSE)
+  write.csv(psps_analysis, paste0(intermediate_dir, "ca_zcta_event_level_psps_washout_2013-2022.csv"), row.names = FALSE)
 } else{
-  write.csv(psps_analysis, paste0(intermediate_dir, "ca_zcta_daily_psps_no_washout_2013-2022.csv"), row.names = FALSE)
+  write.csv(psps_analysis, paste0(intermediate_dir, "ca_zcta_event_level_psps_no_washout_2013-2022.csv"), row.names = FALSE)
 }

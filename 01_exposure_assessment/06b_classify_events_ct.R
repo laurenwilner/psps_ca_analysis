@@ -14,10 +14,16 @@ repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 
 washout <- FALSE # set to TRUE if you want to apply washout period
 
-if(washout <- TRUE){
-  psps <- read.csv(paste0(clean_dir, "ca_ct_hourly_psps_washout_wf_2013-2022.csv"))
+if(washout == TRUE){
+  psps <- read.csv(paste0(clean_dir, "ca_ct_event_level_psps_washout_wf_2013-2022.csv"))
 } else{
   psps <- read.csv(paste0(clean_dir, "ca_ct_event_level_psps_no_washout_wf_2013-2022.csv"))
+}
+
+# -------------------------------------------------
+# helper function
+round_to_5 <- function(x) {
+  return(round(x/5) * 5)
 }
 
 #-------------------------------------------------
@@ -27,10 +33,8 @@ if(washout <- TRUE){
   quantiles_customers <- quantile(psps$total_customers_impacted, probs = c(.33,.66), na.rm = TRUE)
   quantiles_hybrid <- quantile(psps$hybrid, probs = c(.33,.66), na.rm = TRUE)
 # choose cutoffs by using interpretable values near the tertile values: 
-  # quantiles_customers <- c(50,500)
-  # quantiles_hybrid <- c(1, 150)
-  quantiles_customers <- c(15,300)
-  quantiles_hybrid <- c(1, 30)
+  quantiles_customers <- quantiles_customers %>% round_to_5() %>% as.numeric()
+  quantiles_hybrid <- quantiles_hybrid %>% round_to_5() %>% as.numeric
 
 
 psps_class <- psps %>%

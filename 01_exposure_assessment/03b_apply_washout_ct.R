@@ -21,29 +21,29 @@ washout <- FALSE # set to TRUE if you want to apply washout period
 # collapse events that occur within one week of each other
 collapse_events_rle <- function(df) {
   df <- df %>%
-    arrange(zcta, outage_start) %>%
+    arrange(geoid, outage_start) %>%
     mutate(event_group = 0)
   current_group <- 1
-  unique_zctas <- unique(df$zcta)
-  for (z in unique_zctas) {
-    zcta_events <- df %>% filter(zcta == z)
-    for (i in seq_len(nrow(zcta_events))) {
-      if (zcta_events$event_group[i] == 0) {
-        zcta_events$event_group[i] <- current_group
+  unique_cts <- unique(df$geoid)
+  for (c in unique_cts) {
+    ct_events <- df %>% filter(geoid == c)
+    for (i in seq_len(nrow(ct_events))) {
+      if (ct_events$event_group[i] == 0) {
+        ct_events$event_group[i] <- current_group
         j <- i + 1
-        while (j <= nrow(zcta_events) && zcta_events$outage_start[j] <= zcta_events$outage_start[i] + days(7)) {
-          zcta_events$event_group[j] <- current_group
+        while (j <= nrow(ct_events) && ct_events$outage_start[j] <= ct_events$outage_start[i] + days(7)) {
+          ct_events$event_group[j] <- current_group
           j <- j + 1
         }
         current_group <- current_group + 1
       }
     }
     df <- df %>%
-      filter(zcta != z) %>%
-      bind_rows(zcta_events)
+      filter(geoid != c) %>%
+      bind_rows(ct_events)
   }
   df <- df %>%
-    group_by(zcta, event_group) %>%
+    group_by(geoid, event_group) %>%
     summarize(
       psps_event_id = first(psps_event_id),
       outage_start = min(outage_start),
@@ -62,8 +62,8 @@ collapse_events_rle <- function(df) {
 # exclude events more than one week but less than four weeks apart
 exclude_events_rle <- function(df) {
   df <- df %>%
-    arrange(zcta, outage_start) %>%
-    group_by(zcta) %>%
+    arrange(geoid, outage_start) %>%
+    group_by(geoid) %>%
     mutate(
       event_diff = lead(outage_start) - outage_start,
       event_exclude = if_else(event_diff > days(7) & event_diff < days(28), TRUE, FALSE) # using 28 days as a 'month'
@@ -109,9 +109,9 @@ if(washout == TRUE){
   psps_analysis <- psps_clean
 }
 
-# write out daily data with/without washout 
+# write out event level data with/without washout 
 if(washout == TRUE){
-  write.csv(psps_analysis, paste0(intermediate_dir, "ca_ct_daily_psps_washout_2013-2022.csv"), row.names = FALSE)
+  write.csv(psps_analysis, paste0(intermediate_dir, "ca_ct_event_level_psps_washout_2013-2022.csv"), row.names = FALSE)
 } else{
-  write.csv(psps_analysis, paste0(intermediate_dir, "ca_ct_daily_psps_no_washout_2013-2022.csv"), row.names = FALSE)
+  write.csv(psps_analysis, paste0(intermediate_dir, "ca_ct_event_level_psps_no_washout_2013-2022.csv"), row.names = FALSE)
 }
