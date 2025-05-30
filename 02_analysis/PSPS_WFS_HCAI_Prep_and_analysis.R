@@ -8,25 +8,27 @@ library(readr)
 library(dplyr)
 library(data.table) 
 
-indir <- ""
+hcai_dir <- ""
+proj_dir <- ""
+out_dir <- ""
 
-## Data import--please check description of each dataset
-ooi_long <- fread(file.path(indir, "HCAI_ccts_all_2013_2019.csv")) ## file containing health data for each zip_code-day
-psps_levels <- read_csv(file.path(indir, "ca_ZIP_daily_psps_no_washout_classified_2013-2022.csv")) ## file containing psps event data
-z_wfpm <- fread(file.path(indir, "CAzip_wfpm25_2006to2020.csv"))  ## file containing wildfire specific pm2.5 concentration for each zip_code-day
-z_temp <- fread(file.path(indir, "CAzip_tmmx_90to23.csv")) ## list of zip_code in California
+## Data import
+ooi_long <- fread(file.path(hcai_dir, "HCAI_ccts_psps-ooi_2013_2019.csv")) ## file containing health data for each zip_code-day
+psps_levels <- read_csv(file.path(proj_dir, "ca_zcta_event_level_psps_no_washout_wf_classified_2013-2022.csv")) ## file containing psps event data
+z_wfpm <- fread(file.path(proj_dir, "zip_wfpm20132019.csv"))  ## file containing wildfire specific pm2.5 concentration for each zip_code-day
+z_temp <- fread(file.path(proj_dir, "CAzip_tmmx_90to23.csv")) ## file containing temperature for each zip_code-day
 
 ## (1) Prepare exposure data
 
 # Transform PSPS events into daily records from date-time to link to daily health data
-daily_psps <- function(start_datetime, end_datetime, event_id, zip_code, severity_customers, severity_hybrid) {
+daily_psps <- function(start_datetime, end_datetime, event_id, zcta, severity_customers, severity_hybrid) {
   # Extract dates
   start_date <- as.Date(start_datetime)
   end_date <- as.Date(end_datetime)
   data.table(
     date = seq.Date(start_date, end_date, by = "day"),
     psps_event_id = event_id,
-    zip_code = zip_code,
+    zip_code = zcta,
     severity_customers = severity_customers,
     severity_hybrid = severity_hybrid
   )
@@ -39,7 +41,7 @@ daily_exposure <- rbindlist(
       psps_levels$outage_start[i],
       psps_levels$outage_end[i],
       psps_levels$psps_event_id[i],
-      psps_levels$zip_code[i],
+      psps_levels$zcta[i],
       psps_levels$severity_customers[i],
       psps_levels$severity_hybrid[i]
     )
@@ -49,7 +51,7 @@ daily_exposure <- rbindlist(
 dates <- seq.Date(as.Date("2013-01-01"), as.Date("2019-12-31"), by = "day")
 ca_z <- unique(z_temp$zip)
 zip_days <- expand.grid(date = dates, zip_code = ca_z)
-zip_days$zip_code <- as.character(zip_days$zip_code) ## without this, warning message: Warning message: In `[<-.factor`(`*tmp*`, ri, value = c(90264, 90264, 90264, 90264,  :invalid factor level, NA generated
+zip_days$zip_code <- as.character(zip_days$zip_code) 
 
 psps_daily <- merge(zip_days, daily_exposure, by = c("date","zip_code"), all.x = TRUE)
 psps_daily <- as.data.table(psps_daily)
@@ -145,8 +147,8 @@ ooi_psps_Wft <- merge(ooi_psps_Wf, z_temps, by.x = c("patzip", "serv_dt"), by.y 
 
 # age formatting
 ooi_psps_Wft[, agecat := fcase(
-  agecat %in% c(1:5), "19 years and under", ## I fixed the age categories here according to the 2019 & 2015 PDD/EDD Data Dictionary downloaded from HCAI
-  agecat %in% c(6:11), "20-49 years", ## I fixed the age categories here according to the 2019 & 2015 PDD/EDD Data Dictionary downloaded from HCAI
+  agecat %in% c(1:5), "19 years and under", 
+  agecat %in% c(6:11), "20-49 years", 
   agecat %in% c(12:14), "50-64 years",
   agecat %in% c(15:17), "65-79 years",
   agecat %in% c(18:19), "80 years and older",
@@ -154,11 +156,6 @@ ooi_psps_Wft[, agecat := fcase(
 )]
 
 adult_only <- ooi_psps_Wft[agecat != "19 years and under"]
-
-##temporary codes, please delete before finalization--kept here for record only
-# zctalist <- unique(adult_only$patzip)
-# write.csv(zctalist, file.path(outdir1, "list_zcta_in_analysis.csv"), row.names = F)
-##temporary codes, please delete before finalization--kept here for record only
 
 # outcomes of interest (OOI)
 adult_cardio <- adult_only[OOI == "cardio"]
@@ -230,5 +227,9 @@ for (i in 1:length(dat)) {
   assign(paste0("hybmodel_", df_name[i]), hybmodel)
   
   # Assign the result to a variable named results_<dataset_name>
-  assign(paste0("results3_", df_name[i]), results)
+  results_name <- paste0("results_", df_name[i])
+  assign(results_name, results)
+  
+  # Save the results to CSV
+  write.csv(results, file = file.path(out_dir, paste0(results_name, ".csv")), row.names = FALSE)
 }
