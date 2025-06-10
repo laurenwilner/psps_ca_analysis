@@ -70,7 +70,7 @@ psps_daily <- left_join(dates, daily_exposure, by = "date") %>%
   filter(!is.na(zip_code)) %>%
   select(-c("severity_customers", "severity_hybrid"))
 
-write.csv(psps_daily, here("daily_psps_binary.csv"), row.names = FALSE)
+write.csv(psps_daily, "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/data/daily_psps_binary.csv", row.names = FALSE)
 # Create binary exposure variables
 #daily_exposure_2019[, absolute_exposure := ifelse(type == "absolute space", 1, 0)]
 #daily_exposure_2019[, percent_exposure := ifelse(type == "percent space", 1, 0)]

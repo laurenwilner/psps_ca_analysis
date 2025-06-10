@@ -8,9 +8,9 @@
 if (!requireNamespace('pacman', quietly = TRUE)){install.packages('pacman')}
 pacman::p_load(sf, tigris, MetBrewer, lubridate, arrow, raster, tidyverse, scales, knitr, kableExtra, patchwork)
 
+repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 intermediate_dir <- paste0(repo, "data/intermediate/")
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
-repo <- "~/Desktop/Desktop/epidemiology_PhD/00_repos/psps_ca_analysis/"
 
 washout <- FALSE # set to TRUE if you want to apply washout period
 
@@ -20,12 +20,6 @@ if(washout == TRUE){
   psps <- read.csv(paste0(clean_dir, "ca_zcta_event_level_psps_no_washout_wf_2013-2022.csv"))
 }
 
-# -------------------------------------------------
-# helper function
-round_to_5 <- function(x) {
-  return(round(x/5) * 5)
-}
-
 #-------------------------------------------------
 # classify events: mild, moderate, severe
 # NOTE: only doing this for the no washout data because that is what we use in this particular analysis, which we need classifications for. 
@@ -33,9 +27,16 @@ round_to_5 <- function(x) {
   quantiles_customers <- quantile(psps$total_customers_impacted, probs = c(.33,.66), na.rm=TRUE)
   quantiles_hybrid <- quantile(psps$hybrid, probs = c(.33,.66), na.rm=TRUE)
 # choose cutoffs by using interpretable values near the tertile values: 
-  quantiles_customers <- quantiles_customers %>% round_to_5() %>% as.numeric()
-  quantiles_hybrid <- quantiles_hybrid %>% round_to_5() %>% as.numeric
-  
+  quantiles_customers <- case_when(
+      quantiles_customers > 1 ~ round(quantiles_customers, 0),
+      TRUE ~ round(quantiles_customers, 1)
+    ) %>% as.numeric()
+  quantiles_hybrid <- case_when(
+      quantiles_hybrid > 1 ~ round(quantiles_hybrid, 0),
+      TRUE ~ round(quantiles_hybrid, 1)
+    ) %>% as.numeric()
+
+
 psps_class <- psps %>%
   mutate(
     severity_customers = case_when(
