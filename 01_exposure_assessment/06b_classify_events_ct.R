@@ -33,8 +33,14 @@ round_to_5 <- function(x) {
   quantiles_customers <- quantile(psps$total_customers_impacted, probs = c(.33,.66), na.rm = TRUE)
   quantiles_hybrid <- quantile(psps$hybrid, probs = c(.33,.66), na.rm = TRUE)
 # choose cutoffs by using interpretable values near the tertile values: 
-  quantiles_customers <- quantiles_customers %>% round_to_5() %>% as.numeric()
-  quantiles_hybrid <- quantiles_hybrid %>% round_to_5() %>% as.numeric
+  quantiles_customers <- case_when(
+      quantiles_customers > 1 ~ round(quantiles_customers, 0),
+      TRUE ~ round(quantiles_customers, 1)
+    ) %>% as.numeric()
+  quantiles_hybrid <- case_when(
+      quantiles_hybrid > 1 ~ round(quantiles_hybrid, 0),
+      TRUE ~ round(quantiles_hybrid, 1)
+    ) %>% as.numeric()
 
 
 psps_class <- psps %>%

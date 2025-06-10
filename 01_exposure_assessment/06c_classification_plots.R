@@ -13,7 +13,7 @@ raw_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/psps_circuit_data/")
 raw_raster_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/raw/")
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 plot_dir <- ("~/Desktop/Desktop/epidemiology_PhD/02_projects/psps/plots/")
-psps_file_name <- 'ca_zcta_daily_psps_no_washout_2013-2022.csv'
+psps_file_name <- 'ca_zcta_event_level_psps_no_washout_wf_classified_2013-2022.csv'
 
 psps_temp <- read.csv(paste0(clean_dir, psps_file_name))
 
