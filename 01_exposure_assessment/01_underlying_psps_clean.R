@@ -34,14 +34,14 @@ duration_to_hours <- function(duration_str) {
 psps_circuit <- read_csv(paste0(raw_dir, psps_file_name))
 psps_temp <- psps_circuit %>% 
     dplyr::select(c(Circuit_Name_ICA, PSPS_Event_ID, Sub_Event_ID, Outage_Start, Outage_Full_Restoration,
-            Outage_Duration, Total_Customers_Impacted)) %>% 
+            Outage_Duration, Total_Customers_Impacted, Medical_Baseline_Customers_Impacted)) %>% 
     mutate(duration = sapply(Outage_Duration, duration_to_hours)) %>% 
     rename_all(tolower)
 
 #-------------------------------------------------
 # make each row a circuit-event-hr (ie sub_event-hr)
     # if there is overlap on times/circuits, average the rows
-psps_hourly <- psps_temp %>%
+psps <- psps_temp %>%
     mutate(outage_start = as.POSIXct(outage_start, format = "%m/%d/%Y %H:%M", tz = "America/Los_Angeles"),
         outage_end = as.POSIXct(outage_full_restoration, format = "%m/%d/%Y %H:%M", tz = "America/Los_Angeles")) %>%
     group_by(circuit_name_ica, psps_event_id, sub_event_id) %>%
@@ -49,22 +49,8 @@ psps_hourly <- psps_temp %>%
         outage_end = as.POSIXct(mean(as.numeric(outage_end))),
         duration = mean(duration),
         total_customers_impacted = sum(total_customers_impacted),
-        customers_out_per_hr = total_customers_impacted/duration) %>%
+        medical_baseline_customers_impacted = sum(medical_baseline_customers_impacted)) %>%
     ungroup()
     
-psps_expanded <- psps_hourly %>%
-  rowwise() %>%
-  do({
-    hourly_seq <- seq(from = .$outage_start, to =    .$outage_end, by = "hour")
-    data.frame(
-      .,
-      row_start = hourly_seq,
-      row_end = pmin(hourly_seq + hours(1), .$outage_end)  # make sure that row_end does not exceed outage_end
-    )
-  }) %>%
-  ungroup() %>%
-  filter(row_start < outage_end) # if outage start is exactly the end of the outage for a given row, get rid of it. 
-
 # write out file to do this in python
-write_parquet(psps_expanded, paste0(clean_dir, "us_circuit_psps_by_hr.parquet"))
-
+write_parquet(psps, paste0(clean_dir, "us_circuit_psps_daily_plus_eDME.parquet"))
