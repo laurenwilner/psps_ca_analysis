@@ -1,3 +1,6 @@
+This forked repository does the below but includes eDME customers impacted, specifically. 
+
+
 # PSPS Data from California
 
 Public safety power shutoffs (PSPS) events are planned power outages. PSPS events are a measure taken by governments and electric utility companies in an effort to protect public safety. Their goal is to prevent wildfires that may stem from down electrical wires during severe weather.
