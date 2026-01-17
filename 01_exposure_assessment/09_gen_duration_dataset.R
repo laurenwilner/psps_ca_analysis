@@ -6,8 +6,8 @@
 
 #-------------------------------------------------
 # setup
-library(tidyverse)
-library(lubridate)
+library(pacman)
+p_load(tidyverse, lubridate, slider)
 clean_dir <- ("~/Desktop/Desktop/epidemiology_PhD/01_data/clean/")
 
 df <- read_csv(paste0(clean_dir, 'ca_ZIP_daily_psps_no_washout_wf_classified_2013-2022.csv')) %>%
@@ -40,4 +40,27 @@ duration_df <- hourly_deduped %>%
   group_by(zip_code, date) %>%
   summarize(outage_hours = n(), .groups = "drop")
 
-write_csv(duration_df, paste0(clean_dir, 'ca_ZIP_daily_psps_no_washout_wf_classified_2013-2022_duration.csv'))
+# make each day actually be a 7-day lag, so day of interest + 6 days prior averaged
+duration_df <- duration_df %>%
+  group_by(zip_code) %>%
+  complete(date = seq(min(date), max(date), by = "day")) %>%
+  mutate(outage_hours = replace_na(outage_hours, 0)) %>%
+  arrange(zip_code, date) %>%
+  mutate(
+    outage_hours_lag7 = slide_dbl(
+      outage_hours,
+      sum,
+      .before = 6,
+      .complete = FALSE
+    )
+  ) %>%
+  ungroup() %>% 
+  filter(outage_hours_lag7 > 0)
+
+
+# look at just nov for zip 90264 to see if its right 
+# nov_df <- duration_df %>%
+#   filter(zip_code == 90264, date >= as_date("2019-11-01"), date <= as_date("2019-11-30"))
+# print(nov_df)
+
+write_csv(duration_df, paste0(clean_dir, 'ca_ZIP_daily_psps_no_washout_wf_classified_2013-2022_duration_exp.csv'))
