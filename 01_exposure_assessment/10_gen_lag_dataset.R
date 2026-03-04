@@ -128,14 +128,22 @@ print(dataset2)
 # check tertile distributions
 cat("\n\ndataset 1 - event severity distributions:\n")
 cat("total_customers_impacted:\n")
+t1_cust <- quantile(dataset1$total_customers_impacted, probs = c(0.33, 0.66), na.rm = TRUE)
+cat("  tertiles (33%, 66%):", paste(round(t1_cust, 2), collapse = ", "), "\n")
 print(table(dataset1$severity_customers))
 cat("\nhybrid:\n")
+t1_hyb <- quantile(dataset1$hybrid, probs = c(0.33, 0.66), na.rm = TRUE)
+cat("  tertiles (33%, 66%):", paste(round(t1_hyb, 2), collapse = ", "), "\n")
 print(table(dataset1$severity_hybrid))
 
 cat("\n\ndataset 2 - event severity distributions:\n")
 cat("total_customers_impacted_lag4:\n")
+t2_cust <- quantile(dataset2$total_customers_impacted_lag4, probs = c(0.33, 0.66), na.rm = TRUE)
+cat("  tertiles (33%, 66%):", paste(round(t2_cust, 2), collapse = ", "), "\n")
 print(table(dataset2$severity_customers_lag4))
 cat("\nhybrid_lag4:\n")
+t2_hyb <- quantile(dataset2$hybrid_lag4, probs = c(0.33, 0.66), na.rm = TRUE)
+cat("  tertiles (33%, 66%):", paste(round(t2_hyb, 2), collapse = ", "), "\n")
 print(table(dataset2$severity_hybrid_lag4, useNA = "ifany"))
 
 # four panel-ed histograms of the four variables
